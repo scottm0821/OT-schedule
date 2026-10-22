@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a2330">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>DPO/Formalin OT Schedule</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: sticky name column on the left, one board row per operator grouped by shift, a week at a time (or all four), cells open a bottom sheet for editing. */
+:root {
+  --bg: #edf0f3;
+  --surface: #ffffff;
+  --surface2: #f5f7f9;
+  --ink: #1a2330;
+  --muted: #566475;
+  --line: #cbd3dc;
+  --line-strong: #8b98a8;
+  --accent: #1d5c8a;
+  --accent-ink: #ffffff;
+  --night: #27364d;
+  --night-ink: #ffffff;
+  --mark-p: #a8a39d;
+  --mark-y: #ffd23f;
+  --mark-o: #f29a4a;
+  --mark-b: #6fa3d8;
+  --mark-x: #d62f2f;
+  --day-bg: #fff0c9;
+  --day-ink: #6e4600;
+  --day-line: #d99a1c;
+  --today: #e1eff9;
+  --ok: #2c7a4b;
+  --bad: #b3261e;
+  --shadow: rgba(20, 30, 45, .28);
+  --f-name: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mark-x: #ff6b5e;
+    --day-bg: #4a3912;
+    --day-ink: #ffd98a;
+    --day-line: #b8892a;
+    --bg: #10151c; --surface: #18202a; --surface2: #1e2733; --ink: #e8edf2; --muted: #9aa8b8;
+    --line: #2d3947; --line-strong: #5a6b80; --accent: #72b6e8; --accent-ink: #08182a;
+    --night: #3c5375; --night-ink: #ffffff; --mark-p: #6c6862; --mark-y: #a58414; --mark-o: #b06a2c;
+    --mark-b: #3f6f9f; --today: #1c3345; --ok: #5cc185; --bad: #ff8a80; --shadow: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --mark-x: #ff6b5e;
+  --day-bg: #4a3912;
+  --day-ink: #ffd98a;
+  --day-line: #b8892a;
+  --bg: #10151c; --surface: #18202a; --surface2: #1e2733; --ink: #e8edf2; --muted: #9aa8b8;
+  --line: #2d3947; --line-strong: #5a6b80; --accent: #72b6e8; --accent-ink: #08182a;
+  --night: #3c5375; --night-ink: #ffffff; --mark-p: #6c6862; --mark-y: #a58414; --mark-o: #b06a2c;
+  --mark-b: #3f6f9f; --today: #1c3345; --ok: #5cc185; --bad: #ff8a80; --shadow: rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.4;
+  padding-block: 16px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button, input { font: inherit; color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 16px; }
+h1 { margin: 0; font: 700 28px/1.05 var(--f-name); letter-spacing: .01em; text-wrap: balance; }
+.range { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+.status[data-s="live"] .dot { background: var(--ok); }
+.status[data-s="ro"] .dot, .status[data-s="local"] .dot { background: var(--mark-y); }
+.status[data-s="err"] .dot { background: var(--bad); }
+
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; min-width: 0; }
+.tab { flex: 0 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; font: 600 14px var(--f-name); letter-spacing: .02em; white-space: nowrap; }
+.tab small { display: block; font: 500 11px var(--f-body); color: var(--muted); letter-spacing: 0; }
+.tab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tab[aria-pressed="true"] small { color: inherit; opacity: .85; }
+button:focus-visible, .cell:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: -2px; }
+
+.board { overflow-x: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; }
+th, td { padding: 0; }
+.who { position: sticky; left: 0; z-index: 3; background: var(--surface); text-align: left; min-width: 118px; max-width: 118px; padding: 7px 8px; border-right: 2px solid var(--line-strong); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.nm { display: block; font: 600 15px/1.15 var(--f-name); }
+.tal { display: block; margin-top: 3px; padding: 2px 0; background: none; border: 0; cursor: pointer; font: 500 11px var(--f-num); color: var(--muted); text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; }
+.tal:hover { color: var(--accent); }
+.ots { display: block; font: 500 11px var(--f-body); color: var(--accent); }
+thead th { background: var(--surface2); border-bottom: 2px solid var(--line-strong); text-align: center; padding: 6px 2px; position: static; }
+thead th.corner { position: sticky; left: 0; z-index: 4; text-align: left; padding-left: 8px; font: 600 12px var(--f-name); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-right: 2px solid var(--line-strong); }
+.dh { min-width: 66px; }
+.dh .dw { display: block; font: 700 14px var(--f-name); }
+.dh .dd { display: block; font: 500 12px var(--f-num); color: var(--muted); }
+.dh.today, td.today { background-color: var(--today); }
+.dh.today .dd { color: var(--accent); font-weight: 600; }
+.wk { border-left: 2px solid var(--line-strong); }
+.grp th { background: var(--night); color: var(--night-ink); text-align: left; padding: 4px 8px; font: 600 12px var(--f-name); letter-spacing: .12em; text-transform: uppercase; position: sticky; left: 0; z-index: 3; }
+.grp td { background: var(--night); }
+td.c { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); height: 60px; background-color: var(--surface); }
+td.c.today { background-color: var(--today); }
+.cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; height: 100%; min-height: 60px; background: none; border: 0; padding: 3px 2px; cursor: pointer; }
+.cell:hover { box-shadow: inset 0 0 0 2px var(--accent); }
+.sh { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 24px; height: 24px; padding: 0 6px 0 4px; border-radius: 4px; font: 700 14px var(--f-name); }
+.sh svg, .ot svg { width: 14px; height: 14px; flex: none; }
+.s-D { border: 2px solid var(--day-line); background: var(--day-bg); color: var(--day-ink); }
+.s-N { background: var(--night); color: var(--night-ink); border: 2px solid var(--night); }
+.ot { display: inline-flex; align-items: center; gap: 3px; font: 600 11px/1.1 var(--f-num); border-radius: 999px; padding: 2px 6px 2px 4px; border: 1px dashed currentColor; }
+.ot.o-D { background: var(--day-bg); color: var(--day-ink); }
+.ot.o-N { background: var(--night); color: var(--night-ink); }
+.ot b { font-weight: 600; }
+.nt { font: 500 11px/1.1 var(--f-body); color: var(--ink); max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface); border-radius: 3px; padding: 0 3px; }
+td.m-p { background-color: var(--mark-p); }
+td.m-y { background-color: var(--mark-y); }
+td.m-o { background-image: repeating-linear-gradient(135deg, var(--mark-o) 0 3px, transparent 3px 7px); }
+td.m-b { background-image: repeating-linear-gradient(135deg, var(--mark-b) 0 3px, transparent 3px 7px); }
+td.m-ld { background-image: radial-gradient(var(--mark-p) 1.6px, transparent 2.2px); background-size: 7px 7px; }
+td.m-x { background-image: repeating-linear-gradient(45deg, transparent 0 5px, var(--mark-x) 5px 7px), repeating-linear-gradient(-45deg, transparent 0 5px, var(--mark-x) 5px 7px); }
+td.m-y .nt, td.m-y .ot { background: transparent; color: #1a2330; }
+td.m-y .s-D { background: #fff; }
+
+.empty { margin: 0; padding: 10px 14px; border: 1px dashed var(--line-strong); border-radius: 8px; color: var(--muted); background: var(--surface); }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 18px; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.legend > div { display: flex; gap: 9px; align-items: flex-start; min-width: 0; }
+.sw { flex: 0 0 18px; height: 18px; border: 1px solid var(--line-strong); border-radius: 3px; margin-top: 1px; }
+.sw.p { background: var(--mark-p); } .sw.y { background: var(--mark-y); }
+.sw.o { background: repeating-linear-gradient(135deg, var(--mark-o) 0 3px, var(--surface) 3px 7px); }
+.sw.b { background: repeating-linear-gradient(135deg, var(--mark-b) 0 3px, var(--surface) 3px 7px); }
+.sw.ld { background: radial-gradient(var(--mark-p) 1.4px, transparent 2px) 0 0 / 6px 6px, var(--surface); }
+.sw.x { background: repeating-linear-gradient(45deg, var(--surface) 0 3px, var(--mark-x) 3px 5px), repeating-linear-gradient(-45deg, transparent 0 3px, var(--mark-x) 3px 5px); }
+.sw.ic { display: grid; place-items: center; }
+.sw.ic svg { width: 14px; height: 14px; }
+.sw.dd { background: var(--day-bg); color: var(--day-ink); border-color: var(--day-line); }
+.sw.nn { background: var(--night); color: var(--night-ink); }
+.legend strong { color: var(--ink); font-weight: 600; }
+.foot { color: var(--muted); font-size: 13px; margin: 0; }
+
+.next { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.next-h { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px 12px; }
+.next h2 { margin: 0; font: 700 20px/1.1 var(--f-name); }
+.next h2 small { display: block; font: 500 13px/1.3 var(--f-body); color: var(--muted); margin-top: 4px; max-width: 60ch; }
+.sel { padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); font-weight: 500; }
+.nx-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.nx { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--surface2); min-width: 0; }
+.nx.first { border-color: var(--accent); background: var(--surface); box-shadow: inset 0 0 0 1px var(--accent); }
+.nx .rk { flex: none; width: 26px; text-align: center; font: 700 20px var(--f-name); color: var(--muted); }
+.nx.first .rk { color: var(--accent); }
+.nx .nn { min-width: 0; flex: 1; }
+.nx .nn b { display: block; font: 600 15px/1.15 var(--f-name); }
+.nx .nn span { font: 500 12px/1.3 var(--f-num); color: var(--muted); }
+.nx .tag { flex: none; font: 600 11px var(--f-name); letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: var(--accent); color: var(--accent-ink); }
+.nx-out { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* next up controls and rules */
+.nx-ctl { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: flex-end; }
+.chk { display: flex; align-items: center; gap: 7px; padding: 10px 0; font-weight: 500; }
+.chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+.nx.soft { border-style: dashed; }
+.nx .nn .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.nx .nn .pill { font: 600 11px/1.2 var(--f-name); letter-spacing: .03em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: var(--surface); border: 1px solid var(--line-strong); color: var(--ink); }
+.nx .nn .pill.warn { background: var(--mark-y); border-color: var(--mark-y); }
+.nx-empty { grid-column: 1 / -1; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 6px; color: var(--muted); font-size: 13px; }
+.nx-sub { margin: 4px 0 0; font: 600 12px var(--f-name); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.nx-rule { margin: 0; font-size: 13px; color: var(--muted); max-width: 80ch; }
+tr.staff .who { background: var(--surface2); }
+td.sf { text-align: center; font: 600 13px var(--f-num); height: 32px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--surface2); }
+td.sf.low { background: var(--bad); color: var(--bg); }
+details.rules { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--muted); }
+details.rules summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+details.rules ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; max-width: 80ch; }
+.warns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.warns:empty { display: none; }
+.warns li { display: flex; gap: 8px; align-items: center; font-size: 13px; line-height: 1.35; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface2); }
+.warns li.w { border-color: var(--mark-y); background: color-mix(in srgb, var(--mark-y) 24%, var(--surface)); }
+.warns .btn.sm { padding: 4px 9px; font-size: 12px; margin-left: auto; flex: none; }
+
+/* edit sheet */
+.scrim { position: fixed; inset: 0; background: var(--shadow); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 480px; max-height: 92%; overflow-y: auto; background: var(--surface); border-radius: 14px 14px 0 0; padding: 16px max(16px, env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--line-strong); border-bottom: 0; }
+@media (min-width: 560px) { .scrim { align-items: center; } .sheet { border-radius: 14px; border-bottom: 1px solid var(--line-strong); } }
+.sheet h2 { margin: 0; font: 700 21px/1.1 var(--f-name); }
+.sheet h2 span { display: block; font: 500 14px var(--f-body); color: var(--muted); margin-top: 3px; }
+.fld { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.fld legend, .fld > label.t { font: 600 12px var(--f-name); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); padding: 0; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; padding: 9px 13px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); font-weight: 500; min-width: 48px; text-align: center; }
+.seg input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+.seg input:disabled + span { opacity: .55; }
+.txt { width: 100%; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row4 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.row4 .fld > label.t { text-align: center; }
+.row4 .txt { text-align: center; font-family: var(--f-num); padding-inline: 4px; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { padding: 11px 16px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface2); cursor: pointer; font-weight: 600; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); flex: 1 1 auto; }
+.btn.del { color: var(--bad); }
+.hint { margin: 0; font-size: 13px; color: var(--muted); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 30; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; max-width: min(92vw, 420px); font-size: 14px; }
+@media (max-width: 480px) { h1 { font-size: 24px; } .who { min-width: 104px; max-width: 104px; } .dh { min-width: 58px; } }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: rise .16s ease-out; } @keyframes rise { from { transform: translateY(24px); opacity: .6; } } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>DPO/Formalin OT Schedule</h1>
+      <div class="range">October 12 – November 8, 2026</div>
+    </div>
+    <div class="hd-r"><div class="status" id="status" data-s="wait" role="status"><span class="dot"></span><span id="statusText">Connecting</span></div><button class="btn sm" id="authBtn" type="button">Lead sign in</button></div>
+  </header>
+
+  <div class="bar"><div class="tabs" id="tabs" role="group" aria-label="Week"></div></div>
+
+  <section class="next" aria-labelledby="nextT">
+    <div class="next-h">
+      <h2 id="nextT">Next up for overtime<small>Ranked the way the overtime procedure says. Choose the day, the slot and why overtime is needed.</small></h2>
+      <div class="nx-ctl">
+        <div class="fld"><label class="t" for="nextDay">Day</label><select class="sel" id="nextDay"></select></div>
+        <div class="fld"><label class="t" for="nextSlot">Slot</label><select class="sel" id="nextSlot"><option value="D">Day OT</option><option value="N">Night OT</option></select></div>
+        <div class="fld"><label class="t" for="nextKind">Reason</label><select class="sel" id="nextKind"><option value="sched">Scheduled overtime</option><option value="vac">Unscheduled vacation</option><option value="sick">Sick call-out</option><option value="hold">Hold-over, 4 hours or less</option></select></div>
+        <label class="chk" for="nextHol"><input type="checkbox" id="nextHol"> Holiday shift</label>
+      </div>
+    </div>
+    <ol class="nx-list" id="nxList"></ol>
+    <p class="nx-sub" id="nxLateH" hidden>Only if no one else is available (SOP 24f, 34c)</p>
+    <ol class="nx-list" id="nxLate"></ol>
+    <p class="nx-rule" id="nxRule"></p>
+    <p class="nx-out" id="nxOut"></p>
+  </section>
+
+  <p class="empty" id="emptyNote" hidden>Nothing saved yet. Tap any cell to add a shift, an OT slot or a note.</p>
+
+  <div class="board" id="board"></div>
+
+  <section class="legend" aria-label="Legend">
+    <div><span class="sw y"></span><span><strong>Light yellow.</strong> Two other people already have time off approved. Schedule the day as normal. It is only granted if someone agrees to cover it. Otherwise it is not granted and no hours are charged.</span></div>
+    <div><span class="sw ic dd"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg></span><span><strong>Sun.</strong> Day shift (D) or a day overtime slot.</span></div>
+    <div><span class="sw ic nn"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 9.6A5.6 5.6 0 0 1 6.4 3 5.6 5.6 0 1 0 13 9.6z" fill="currentColor"/></svg></span><span><strong>Moon.</strong> Night shift (N) or a night overtime slot. Overtime slots have a dashed outline and the offered total written in the box.</span></div>
+    <div><span class="sw p"></span><span><strong>Gray.</strong> Protection.</span></div>
+    <div><span class="sw o"></span><span><strong>Orange hatch.</strong> On call. Not scheduled for overtime, but called first for sick call-outs.</span></div>
+    <div><span class="sw b"></span><span><strong>Blue hatch.</strong> Time off, vacation or personal. No more than 2 people per day and per shift.</span></div>
+    <div><span class="sw ld"></span><span><strong>Gray dots.</strong> Light duty. Not offered overtime.</span></div>
+    <div><span class="sw x"></span><span><strong>Red cross-hatch.</strong> OT was offered and turned down. The hours count as offered, not worked.</span></div>
+  </section>
+  <p class="foot">D is a day shift and N is a night shift. Tap a cell to edit it. Under each name, O is overtime hours offered and W is overtime hours worked. Tap those numbers to edit that week's tallies. The Staffing rows at the bottom count who is working each day and night. Red means fewer than 3.</p>
+  <details class="rules">
+    <summary>How the page applies the overtime procedure</summary>
+    <ul>
+      <li>Next up ranks the lowest offered hours first (SOP 25a, 29, 35). Holiday shifts rank the highest worked hours first (SOP 25b).</li>
+      <li>Skipped for overtime: on call, protected days off, light duty, time off, already working that day, or less than 8 hours rest (SOP 24, 34).</li>
+      <li>A second day of rest is listed last and only used if no one else is available (SOP 24f, 34c).</li>
+      <li>Sick call-outs go to the on-call person first (SOP 31). Unscheduled vacation does not offer to on call (SOP 29).</li>
+      <li>Anyone shaded blue (time off) on that day is left off the Next up list.</li>
+      <li>A seventh day in a row is flagged as double time (SOP 34c).</li>
+      <li>Editing a cell warns about overtime that breaks a rule, more than 2 people off per day or per shift (SOP 2, 3), more than 1 person protected (SOP 18), fewer than 3 on a shift (SOP 1), offered totals that go down, and changes to posted overtime (SOP 22).</li>
+      <li>Warnings never block a save. Deviations from the call-out policy should be approved by management (SOP 32).</li>
+      <li>Not checked: vacation request deadlines (SOP 4 to 6), the on-call rotation (SOP 7 to 16) and hold-over length.</li>
+    </ul>
+  </details>
+</div>
+
+<div id="sheetHost"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+  var PEOPLE = [
+    ["hardeman", "Darren Hardeman", "A"], ["rios", "Lionel Rios", "A"], ["delao", "Juan Delao", "A"],
+    ["flowers", "Jake Flowers", "B"], ["crooker", "Louis Crooker", "B"], ["sweeney", "Dennis Sweeney", "B"], ["crainer", "Taylor Crainer", "B"],
+    ["petersen", "Cody Petersen", "C"], ["belt", "Garrett Belt", "C"], ["sobnosky", "Caleb Sobnosky", "C"],
+    ["thomas", "James Thomas", "D"], ["henderson", "Nicholas Henderson", "D"], ["cates", "Ross Cates", "D"]
+  ];
+  var DOW = ["M", "T", "W", "T", "F", "S", "S"];
+  var DOWFULL = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var START = new Date(2026, 9, 12);
+  var MARKS = { p: "Protection (gray)", y: "Light yellow", o: "Orange hatch", b: "Blue hatch" };
+  var SUN = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>';
+  var MOON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 9.6A5.6 5.6 0 0 1 6.4 3 5.6 5.6 0 1 0 13 9.6z" fill="currentColor"/></svg>';
+  function otType(v) { return !v ? "" : (v === "N" || v === "12-1") ? "N" : "D"; }
+
+  var rows = {};          // docId -> {d:{0..6:{s,ot,n,note,m}}, t:{o,w,p,v}}
+  var db = null, canWrite = true, synced = false, view = "0", openCtx = null;
+  var chains = {};
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function dayOf(w, d) { return new Date(START.getFullYear(), START.getMonth(), START.getDate() + w * 7 + d); }
+  function sameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
+  function weekLabel(w) {
+    var a = dayOf(w, 0), b = dayOf(w, 6);
+    return MON[a.getMonth()] + " " + a.getDate() + " – " + (a.getMonth() === b.getMonth() ? "" : MON[b.getMonth()] + " ") + b.getDate();
+  }
+  function todayWeek() {
+    var now = new Date();
+    for (var w = 0; w < 4; w++) for (var d = 0; d < 7; d++) if (sameDay(dayOf(w, d), now)) return w;
+    return now < START ? 0 : 3;
+  }
+  function rid(pid, w) { return pid + "_" + w; }
+  function getRow(pid, w) { return rows[rid(pid, w)] || {}; }
+
+  function setStatus(s, text) { var el = $("status"); el.setAttribute("data-s", s); $("statusText").textContent = text; }
+  var toastTimer;
+  function toast(msg) {
+    var t = $("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 3800);
+  }
+
+  /* ---------- render ---------- */
+  var raf = 0;
+  function scheduleRender() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; render(); }); }
+
+  function focusWeek() { return view === "all" ? todayWeek() : parseInt(view, 10); }
+
+  function renderTabs() {
+    var h = "";
+    for (var w = 0; w < 4; w++) h += '<button class="tab" type="button" data-view="' + w + '" aria-pressed="' + (view === String(w)) + '">Week ' + (w + 1) + "<small>" + weekLabel(w) + "</small></button>";
+    h += '<button class="tab" type="button" data-view="all" aria-pressed="' + (view === "all") + '">All 4 weeks<small>Oct 12 – Nov 8</small></button>';
+    $("tabs").innerHTML = h;
+  }
+
+  function cellHtml(pid, w, d, today) {
+    var c = (getRow(pid, w).d || {})[d] || {};
+    var cls = "c" + (c.m ? " m-" + c.m : "") + (today ? " today" : "") + (d === 0 && view === "all" && w > 0 ? " wk" : "");
+    var inner = "";
+    if (c.s) inner += '<span class="sh s-' + esc(c.s) + '">' + (c.s === "N" ? MOON : SUN) + esc(c.s) + "</span>";
+    var ot = otType(c.ot);
+    if (ot) inner += '<span class="ot o-' + ot + '" title="' + (ot === "N" ? "Night" : "Day") + ' overtime">' + (ot === "N" ? MOON : SUN) + (c.n ? "<b>" + esc(c.n) + "</b>" : "") + "</span>";
+    if (c.note) inner += '<span class="nt" title="' + esc(c.note) + '">' + esc(c.note) + "</span>";
+    var label = DOWFULL[d] + " " + MON[dayOf(w, d).getMonth()] + " " + dayOf(w, d).getDate() + ", " + PEOPLE.filter(function (p) { return p[0] === pid; })[0][1] + (c.s ? ", " + (c.s === "D" ? "day" : "night") : "") + (c.ot ? ", " + (otType(c.ot) === "N" ? "night" : "day") + " overtime" : "") + (!c.s && !c.ot ? ", empty" : "");
+    return '<td class="' + cls + '"><button class="cell" type="button" data-pid="' + pid + '" data-w="' + w + '" data-d="' + d + '" aria-label="' + esc(label) + '">' + inner + "</button></td>";
+  }
+
+  function render() {
+    var weeks = view === "all" ? [0, 1, 2, 3] : [parseInt(view, 10)];
+    var now = new Date(), fw = focusWeek();
+    var span = weeks.length * 7;
+    var h = '<table><thead><tr><th class="corner" scope="col">Operator</th>';
+    weeks.forEach(function (w) {
+      for (var d = 0; d < 7; d++) {
+        var dt = dayOf(w, d);
+        h += '<th scope="col" class="dh' + (sameDay(dt, now) ? " today" : "") + (d === 0 && weeks.length > 1 && w > 0 ? " wk" : "") + '"><span class="dw">' + DOW[d] + '</span><span class="dd">' + dt.getDate() + " " + MON[dt.getMonth()] + "</span></th>";
+      }
+    });
+    h += "</tr></thead><tbody>";
+    var lastShift = "";
+    PEOPLE.forEach(function (p) {
+      var pid = p[0];
+      if (p[2] !== lastShift) {
+        lastShift = p[2];
+        h += '<tr class="grp"><th scope="rowgroup">Shift ' + lastShift + '</th><td colspan="' + span + '"></td></tr>';
+      }
+      var slots = 0;
+      weeks.forEach(function (w) { var dd = getRow(pid, w).d || {}; Object.keys(dd).forEach(function (k) { if (dd[k].ot) slots++; }); });
+      var t = getRow(pid, fw).t || {};
+      var tl = (t.o || t.w) ? "O " + (t.o || "–") + " · W " + (t.w || "–") : "O / W –";
+      h += '<tr><th class="who" scope="row"><span class="nm">' + esc(p[1]) + '</span><button class="tal" type="button" data-pid="' + pid + '" data-w="' + fw + '" aria-label="Edit tallies for ' + esc(p[1]) + '">' + esc(tl) + "</button>" + (slots ? '<span class="ots">' + slots + " OT slot" + (slots > 1 ? "s" : "") + "</span>" : "") + "</th>";
+      weeks.forEach(function (w) { for (var d = 0; d < 7; d++) h += cellHtml(pid, w, d, sameDay(dayOf(w, d), now)); });
+      h += "</tr>";
+    });
+    h += '<tr class="grp"><th scope="rowgroup">Staffing, minimum 3</th><td colspan="' + span + '"></td></tr>';
+    [["D", "Day staff"], ["N", "Night staff"]].forEach(function (r) {
+      h += '<tr class="staff"><th class="who" scope="row"><span class="nm">' + r[1] + "</span></th>";
+      weeks.forEach(function (w) { for (var d = 0; d < 7; d++) { var n = staffCount(w * 7 + d, r[0]); h += '<td class="sf' + (n < 3 ? " low" : "") + '" title="' + r[1] + ": " + n + '">' + n + "</td>"; } });
+      h += "</tr>";
+    });
+    h += "</tbody></table>";
+    var board = $("board"), sx = board.scrollLeft;
+    board.innerHTML = h;
+    board.scrollLeft = sx;
+    $("emptyNote").hidden = !(synced && Object.keys(rows).length === 0);
+    renderNext();
+  }
+
+  function scrollToToday() {
+    if (view === "all") return;
+    var b = $("board"), el = b.querySelector("td.today");
+    if (el) b.scrollLeft = Math.max(0, el.offsetLeft - 140);
+  }
+
+  /* ---------- saving ---------- */
+  function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
+  function queue(id, fn) {
+    var prev = chains[id] || Promise.resolve();
+    var next = prev.catch(function () {}).then(fn);
+    chains[id] = next; return next;
+  }
+  function persist(pid, w, mutate) {
+    var id = rid(pid, w);
+    var doc = clone(rows[id]);
+    mutate(doc);
+    if (doc.d && !Object.keys(doc.d).length) delete doc.d;
+    if (doc.t && !doc.t.o && !doc.t.w && !doc.t.p && !doc.t.v) delete doc.t;
+    var empty = !doc.d && !doc.t;
+    if (empty) delete rows[id]; else rows[id] = doc;   // shown at once; the live feed confirms it
+    render();
+    if (!db) return Promise.resolve();
+    return queue(id, function () {
+      var ref = db.doc("rows/" + id);
+      return empty ? ref.delete() : ref.set(doc);
+    }).catch(function (e) {
+      if (e && (e.code === "invalid_argument" || e.code === "permission-denied")) { canWrite = false; setStatus("ro", "View only"); toast("You can view this schedule but not edit it. Ask the owner for Contributor access."); }
+      else toast("That change did not save. Check your connection and try again.");
+    });
+  }
+
+  /* ---------- sheet ---------- */
+  function seg(name, opts, cur) {
+    return '<div class="seg">' + opts.map(function (o, i) {
+      return '<label><input type="radio" name="' + name + '" value="' + esc(o[0]) + '" id="' + name + i + '"' + (String(cur || "") === o[0] ? " checked" : "") + (canWrite ? "" : " disabled") + "><span>" + esc(o[1]) + "</span></label>";
+    }).join("") + "</div>";
+  }
+  function closeSheet() { $("sheetHost").innerHTML = ""; openCtx = null; }
+  function personName(pid) { return PEOPLE.filter(function (p) { return p[0] === pid; })[0][1]; }
+
+  function openCell(pid, w, d) {
+    var c = (getRow(pid, w).d || {})[d] || {};
+    var dt = dayOf(w, d), dis = canWrite ? "" : " disabled";
+    openCtx = { pid: pid, w: w, d: d };
+    $("sheetHost").innerHTML =
+      '<div class="scrim" id="scrim"><form class="sheet" id="cellForm" role="dialog" aria-modal="true" aria-labelledby="shT">' +
+      '<h2 id="shT">' + esc(personName(pid)) + "<span>" + DOWFULL[d] + ", " + MON[dt.getMonth()] + " " + dt.getDate() + "</span></h2>" +
+      '<fieldset class="fld"><legend>Shift</legend>' + seg("s", [["", "None"], ["D", "Day"], ["N", "Night"]], c.s) + "</fieldset>" +
+      '<fieldset class="fld"><legend>Overtime</legend>' + seg("ot", [["", "None"], ["D", "Day OT"], ["N", "Night OT"]], otType(c.ot)) +
+      '<div class="row2"><div class="fld"><label class="t" for="fN">Number in the box</label><input class="txt" id="fN" inputmode="numeric" maxlength="6" value="' + esc(c.n || "") + '"' + dis + "></div>" +
+      '<div class="fld"><label class="t" for="fNote">Note</label><input class="txt" id="fNote" maxlength="24" placeholder="Extra, Sweeney" value="' + esc(c.note || "") + '"' + dis + "></div></div></fieldset>" +
+      '<fieldset class="fld"><legend>Mark</legend>' + seg("m", [["", "None"], ["p", "Protection"], ["y", "Light yellow"], ["o", "On call"], ["b", "Time off"], ["ld", "Light duty"], ["x", "Declined OT"]], c.m) + "</fieldset>" +
+      '<ul class="warns" id="warns" aria-live="polite"></ul>' +
+      (canWrite ? "" : '<p class="hint">You can view this schedule but not change it.</p>') +
+      '<div class="btns">' + (canWrite ? '<button class="btn pri" type="submit" id="saveBtn">Save</button>' : "") + '<button class="btn" type="button" id="cancel">' + (canWrite ? "Cancel" : "Close") + "</button>" + (canWrite ? '<button class="btn del" type="button" id="clearCell">Clear cell</button>' : "") + "</div></form></div>";
+    $("cellForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var f = $("cellForm"), v = function (n) { var x = f.querySelector('input[name="' + n + '"]:checked'); return x ? x.value : ""; };
+      var nc = {};
+      if (v("s")) nc.s = v("s");
+      if (v("ot")) nc.ot = v("ot");
+      var num = $("fN").value.trim(), note = $("fNote").value.trim();
+      if (num) nc.n = num;
+      if (note) nc.note = note;
+      if (v("m")) nc.m = v("m");
+      var ctx = openCtx; closeSheet();
+      persist(ctx.pid, ctx.w, function (doc) {
+        doc.d = doc.d || {};
+        if (Object.keys(nc).length) doc.d[ctx.d] = nc; else delete doc.d[ctx.d];
+      });
+    });
+    bindGuard(pid, w, d);
+    var cl = $("clearCell");
+    if (cl) cl.addEventListener("click", function () { var ctx = openCtx; closeSheet(); persist(ctx.pid, ctx.w, function (doc) { if (doc.d) delete doc.d[ctx.d]; }); });
+    $("cancel").addEventListener("click", closeSheet);
+    $("scrim").addEventListener("click", function (e) { if (e.target.id === "scrim") closeSheet(); });
+  }
+
+  function openTally(pid, w) {
+    var t = getRow(pid, w).t || {}, dis = canWrite ? "" : " disabled";
+    openCtx = { pid: pid, w: w };
+    function fld(k, l) { return '<div class="fld"><label class="t" for="t' + k + '">' + l + '</label><input class="txt" id="t' + k + '" inputmode="numeric" maxlength="6" value="' + esc(t[k] || "") + '"' + dis + "></div>"; }
+    $("sheetHost").innerHTML =
+      '<div class="scrim" id="scrim"><form class="sheet" id="talForm" role="dialog" aria-modal="true" aria-labelledby="shT">' +
+      '<h2 id="shT">' + esc(personName(pid)) + "<span>Tallies, week of " + weekLabel(w) + "</span></h2>" +
+      '<div class="row4">' + fld("o", "Offered") + fld("w", "Worked") + "</div>" +
+      '<p class="hint">Overtime hours offered and worked for this week.</p>' +
+      '<div class="btns">' + (canWrite ? '<button class="btn pri" type="submit">Save</button>' : "") + '<button class="btn" type="button" id="cancel">' + (canWrite ? "Cancel" : "Close") + "</button></div></form></div>";
+    $("talForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var nt = {};
+      ["o", "w"].forEach(function (k) { var x = $("t" + k).value.trim(); if (x) nt[k] = x; });
+      var ctx = openCtx; closeSheet();
+      persist(ctx.pid, ctx.w, function (doc) { if (Object.keys(nt).length) doc.t = nt; else delete doc.t; });
+    });
+    $("cancel").addEventListener("click", closeSheet);
+    $("scrim").addEventListener("click", function (e) { if (e.target.id === "scrim") closeSheet(); });
+  }
+
+  /* ---------- next up ---------- */
+  var nextDay = 0;
+  function initNext() {
+    var sel = $("nextDay"), h = "", now = new Date(), idx = 0;
+    for (var i = 0; i < 28; i++) {
+      var w = Math.floor(i / 7), d = i % 7, dt = dayOf(w, d);
+      if (sameDay(dt, now)) idx = i;
+      h += '<option value="' + i + '">' + DOWFULL[d] + " " + MON[dt.getMonth()] + " " + dt.getDate() + "</option>";
+    }
+    sel.innerHTML = h; nextDay = idx; sel.value = String(idx);
+    sel.addEventListener("change", function () { nextDay = +sel.value; renderNext(); });
+    ["nextSlot", "nextKind", "nextHol"].forEach(function (id) { $(id).addEventListener("change", renderNext); });
+  }
+  function offeredFor(pid, w, d) {
+    var best = null, i, ww, c, t = tallyFor(pid, w) || { o: 0, w: 0 };
+    for (i = w * 7 + d - 1; i >= 0; i--) {
+      ww = Math.floor(i / 7); c = ((getRow(pid, ww).d || {})[i % 7]) || {};
+      if (c.ot && c.n !== undefined && c.n !== "" && !isNaN(parseFloat(c.n))) { best = parseFloat(c.n); break; }
+    }
+    return { o: best !== null ? Math.max(best, t.o) : t.o, w: t.w };
+  }
+  function tallyFor(pid, w) {
+    var k, t;
+    for (k = w; k >= 0; k--) { t = getRow(pid, k).t; if (t && t.o !== undefined && t.o !== "") return { o: parseFloat(t.o) || 0, w: parseFloat(t.w) || 0 }; }
+    for (k = w + 1; k < 4; k++) { t = getRow(pid, k).t; if (t && t.o !== undefined && t.o !== "") return { o: parseFloat(t.o) || 0, w: parseFloat(t.w) || 0 }; }
+    return null;
+  }
+  var RULES = {
+    sched: "Lowest offered hours first, for a 12 hour shift on a day off (SOP 25a). Overtime is scheduled and posted by Wednesday for the following Monday to Sunday (SOP 20).",
+    hol: "Holiday shift: highest worked hours first. They may refuse and it passes to the next highest worked. If no one accepts, the lowest worked person covers (SOP 25b).",
+    vac: "Offer the lowest offered hours first, then the next lowest. If someone agrees, the vacation is approved. If no one can cover it, it is not approved. On call is not offered (SOP 29).",
+    sick: "The on-call person is called first (SOP 31). If no one agrees to work it, the on-call person is forced out (SOP 30). On Monday to Friday days, day staff or a night processor coming out early may cover sick time to keep on call available.",
+    hold: "Hold-over is 4 hours or less. Everyone working that shift is offered it, lowest offered first. If all decline, the lowest worked person covers (SOP 35). Slot means the shift that needs it."
+  };
+  function nxItem(e, n, first, soft) {
+    var sh = e.s === "D" ? "Day shift" : e.s === "N" ? "Night shift" : e.ot ? (otType(e.ot) === "N" ? "Night OT" : "Day OT") : "Off";
+    var tags = e.ev.tags.map(function (t) { return '<span class="pill">' + esc(t) + "</span>"; }).concat(e.ev.soft.map(function (t) { return '<span class="pill warn">' + esc(t) + "</span>"; })).join("");
+    return '<li class="nx' + (first ? " first" : "") + (soft ? " soft" : "") + '"><span class="rk">' + n + '</span><span class="nn"><b>' + esc(e.name) + "</b><span>" + e.g + " · " + sh + " · O " + e.t.o + " · W " + e.t.w + "</span>" + (tags ? '<span class="tags">' + tags + "</span>" : "") + "</span>" + (first ? '<span class="tag">Next</span>' : "") + "</li>";
+  }
+  function renderNext() {
+    var i = nextDay, w = Math.floor(i / 7), d = i % 7, slot = $("nextSlot").value, kind = $("nextKind").value;
+    var holBox = $("nextHol"); holBox.disabled = kind !== "sched";
+    var hol = holBox.checked && kind === "sched";
+    var ok = [], late = [], out = [];
+    PEOPLE.forEach(function (p) {
+      var ev = evalPerson(p[0], i, slot, kind), e = { name: p[1], g: p[2], s: cellAt(p[0], i).s, ot: cellAt(p[0], i).m !== "x" ? cellAt(p[0], i).ot : "", t: offeredFor(p[0], w, d), ev: ev };
+      if (ev.block.length) out.push(p[1] + " (" + ev.block.join(", ") + ")");
+      else if (ev.soft.length) late.push(e); else ok.push(e);
+    });
+    var cmp = function (a, b) {
+      if (kind === "sick" && a.ev.first !== b.ev.first) return a.ev.first ? -1 : 1;
+      if (hol) { if (a.t.w !== b.t.w) return b.t.w - a.t.w; if (a.t.o !== b.t.o) return a.t.o - b.t.o; }
+      else { if (a.t.o !== b.t.o) return a.t.o - b.t.o; if (a.t.w !== b.t.w) return a.t.w - b.t.w; }
+      return a.name < b.name ? -1 : 1;
+    };
+    ok.sort(cmp); late.sort(cmp);
+    $("nxList").innerHTML = ok.length ? ok.map(function (e, k) { return nxItem(e, k + 1, k === 0, false); }).join("")
+      : (late.length ? "" : '<li class="nx-empty">No one is available for this. Deviations should be approved by management (SOP 32).</li>');
+    $("nxLateH").hidden = !late.length;
+    $("nxLate").innerHTML = late.map(function (e, k) { return nxItem(e, ok.length + k + 1, !ok.length && k === 0, true); }).join("");
+    $("nxRule").textContent = RULES[hol ? "hol" : kind];
+    $("nxOut").textContent = out.length ? "Not available: " + out.join(", ") + "." : "";
+  }
+
+  /* ---------- procedure rules ---------- */
+  function todayIdx() {
+    var now = new Date();
+    for (var i = 0; i < 28; i++) if (sameDay(dayOf(Math.floor(i / 7), i % 7), now)) return i;
+    return now < START ? -1 : 28;
+  }
+  function dayName(i) { var dt = dayOf(Math.floor(i / 7), i % 7); return DOWFULL[i % 7] + " " + MON[dt.getMonth()] + " " + dt.getDate(); }
+  var OVERRIDE = null;   // {pid, i, cell}: treat this cell as if it held something else, to check an edit before it is saved
+  function cellAt(pid, i) {
+    if (i < 0 || i > 27) return {};
+    if (OVERRIDE && OVERRIDE.pid === pid && OVERRIDE.i === i) return OVERRIDE.cell;
+    return ((getRow(pid, Math.floor(i / 7)).d || {})[i % 7]) || {};
+  }
+  function absent(c) { return c.m === "b"; }
+  function covers(c, t) { return !absent(c) && (c.s === t || (!!c.ot && c.m !== "x" && otType(c.ot) === t)); }
+  function works(c) { return covers(c, "D") || covers(c, "N"); }
+  function staffCount(i, t) {
+    var n = 0;
+    PEOPLE.forEach(function (p) { if (covers(cellAt(p[0], i), t)) n++; });
+    return n;
+  }
+  var PHRASE = {
+    "protected days off": "Protected days off: no overtime (SOP 24b, 34a).",
+    "light duty": "Light duty: no overtime (SOP 24d, 34b).",
+    "on call": "On call: not scheduled for overtime, except call-outs (SOP 24a, 12).",
+    "already working that day": "Already working a shift this day.",
+    "less than 8 hours rest": "Less than 8 hours rest before or after this slot (SOP 24e).",
+    "on time off": "Marked as time off this day.",
+    "second day of rest": "Second day of rest. Only if no one else is available (SOP 24f, 34c)."
+  };
+  function evalPerson(pid, i, slot, kind) {
+    var c = cellAt(pid, i), pv = cellAt(pid, i - 1), nx = cellAt(pid, i + 1);
+    var block = [], soft = [], tags = [], first = false;
+    if (c.m === "p") block.push("protected days off");
+    else if (c.m === "ld") block.push("light duty");
+    else if (c.m === "o") { if (kind === "sick") { tags.push("On call: call first"); first = true; } else block.push("on call"); }
+    else if (absent(c)) block.push("on time off");
+    if (kind === "hold") {
+      if (!covers(c, slot)) block.push("not working that shift");
+    } else if (c.ot && c.m !== "x") {
+      block.push("already has " + (otType(c.ot) === "N" ? "night" : "day") + " OT");
+    } else if (works(c)) {
+      block.push("already working that day");
+    } else if ((slot === "D" && covers(pv, "N")) || (slot === "N" && covers(nx, "D"))) {
+      block.push("less than 8 hours rest");
+    } else if (!block.length && !first && !works(pv) && !absent(pv) && works(cellAt(pid, i - 2))) {
+      soft.push("second day of rest");
+    }
+    var run = 0;
+    for (var j = 1; j <= 6; j++) { if (works(cellAt(pid, i - j))) run++; else break; }
+    if (run === 6) tags.push("7th day in a row: double time");
+    return { block: block, soft: soft, tags: tags, first: first };
+  }
+  function checkCell(pid, w, d, nc) {
+    var i = w * 7 + d, out = [], old = (getRow(pid, w).d || {})[d] || {};
+    var me = PEOPLE.filter(function (p) { return p[0] === pid; })[0], name = me[1];
+    var before = { D: staffCount(i, "D"), N: staffCount(i, "N") };
+    var ot = otType(nc.ot);
+    OVERRIDE = { pid: pid, i: i, cell: nc };
+    try {
+      if (ot && nc.m !== "x") {
+        var base = clone(nc); delete base.ot; delete base.n;
+        OVERRIDE.cell = base;
+        var ev = evalPerson(pid, i, ot, "sched");
+        ev.block.forEach(function (b) { out.push({ lvl: b === "on call" ? "i" : "w", text: PHRASE[b] || b }); });
+        ev.soft.forEach(function (b) { out.push({ lvl: "w", text: PHRASE[b] || b }); });
+        ev.tags.forEach(function (t) { out.push({ lvl: "i", text: t + " (SOP 38)." }); });
+        OVERRIDE.cell = nc;
+      }
+      if (nc.m === "x") {
+        out.push(ot
+          ? { lvl: "i", text: "Turned down: the hours still count as offered, so enter the new running total (SOP 36). Not charged for illness, jury duty, funeral leave, or if the job is not worked (SOP 39)." }
+          : { lvl: "w", text: "Declined OT needs an overtime slot (Day OT or Night OT) so the offered hours can be charged." });
+      }
+      if (nc.m === "b") {
+        var dayN = 0, crewN = 0;
+        PEOPLE.forEach(function (p) { if (p[0] !== pid && absent(cellAt(p[0], i))) { dayN++; if (p[2] === me[2]) crewN++; } });
+        if (crewN >= 2) out.push({ lvl: "w", text: "Two others in shift " + me[2] + " already have time off this day. Max 2 per shift (SOP 2). Use light yellow so it is only granted if someone agrees to cover it." });
+        else if (dayN >= 2) out.push({ lvl: "w", text: "Two others already have time off this day. Max 2 per day (SOP 3). Use light yellow so it is only granted if someone agrees to cover it." });
+      }
+      if (nc.m === "p") {
+        var prot = PEOPLE.filter(function (p) { return p[0] !== pid && cellAt(p[0], i).m === "p"; });
+        if (prot.length) out.push({ lvl: "w", text: prot[0][1] + " is already protected this day. Only 1 processor may be protected at a time, and the first request wins (SOP 18, 19)." });
+      }
+      ["D", "N"].forEach(function (t) {
+        var n = staffCount(i, t);
+        if (n < 3 && n < before[t]) out.push({ lvl: "w", text: "This leaves " + n + " on " + (t === "D" ? "day" : "night") + " shift on " + dayName(i) + ". Minimum is 3 (SOP 1)." });
+      });
+      if (ot) {
+        var prev = offeredFor(pid, w, d).o, n = parseFloat(nc.n);
+        if (nc.n === undefined || isNaN(n)) out.push({ lvl: "i", text: "Write the running offered total in the box. A 12 hour slot adds 12 to " + prev + " (SOP 25a, 36).", sug: prev + 12 });
+        else if (n < prev) out.push({ lvl: "w", text: "That total is lower than their current " + prev + ". Offered hours only go up." });
+        else if (n - prev !== 12) out.push({ lvl: "i", text: "That is +" + (n - prev) + " from " + prev + ". A 12 hour slot is +12. Short call-outs are charged the call-out or the hours worked, whichever is greater (SOP 26)." });
+      }
+      if (old.ot && (otType(old.ot) !== ot || String(old.n || "") !== String(nc.n || ""))) {
+        out.push({ lvl: "w", text: "This overtime was already posted. The original schedule is not changed. If it was turned down, mark it Declined OT. If more is needed, add another slot (SOP 22)." });
+      }
+      if (i < todayIdx()) out.push({ lvl: "i", text: "This day has already passed." });
+    } finally { OVERRIDE = null; }
+    return out;
+  }
+  function readForm() {
+    var f = $("cellForm"), v = function (n) { var x = f.querySelector('input[name="' + n + '"]:checked'); return x ? x.value : ""; };
+    var nc = {};
+    if (v("s")) nc.s = v("s");
+    if (v("ot")) nc.ot = v("ot");
+    var num = $("fN").value.trim(), note = $("fNote").value.trim();
+    if (num) nc.n = num;
+    if (note) nc.note = note;
+    if (v("m")) nc.m = v("m");
+    return nc;
+  }
+  function bindGuard(pid, w, d) {
+    var f = $("cellForm");
+    function run() {
+      var res = checkCell(pid, w, d, readForm()), anyW = res.some(function (r) { return r.lvl === "w"; });
+      $("warns").innerHTML = res.map(function (r) {
+        return '<li class="' + r.lvl + '"><span>' + esc(r.text) + "</span>" + (r.sug != null ? '<button type="button" class="btn sm" data-sug="' + r.sug + '">Use ' + r.sug + "</button>" : "") + "</li>";
+      }).join("");
+      var sb = $("saveBtn"); if (sb) sb.textContent = anyW ? "Save anyway" : "Save";
+    }
+    f.addEventListener("input", run);
+    f.addEventListener("change", run);
+    f.addEventListener("click", function (e) { var b = e.target.closest("[data-sug]"); if (b) { $("fN").value = b.getAttribute("data-sug"); run(); } });
+    run();
+  }
+
+  /* ---------- events ---------- */
+  document.addEventListener("click", function (e) {
+    var tab = e.target.closest(".tab");
+    if (tab) { view = tab.getAttribute("data-view"); renderTabs(); render(); scrollToToday(); return; }
+    var cell = e.target.closest(".cell");
+    if (cell) { openCell(cell.getAttribute("data-pid"), +cell.getAttribute("data-w"), +cell.getAttribute("data-d")); return; }
+    var tal = e.target.closest(".tal");
+    if (tal) openTally(tal.getAttribute("data-pid"), +tal.getAttribute("data-w"));
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && openCtx) closeSheet(); });
+
+  /* ---------- start ---------- */
+  view = String(todayWeek());
+  initNext();
+  renderTabs(); render(); scrollToToday();
+
+  function connect() {
+    var c = window.claude;
+    if (!c || !c.use) { setStatus("local", "Not shared"); synced = true; render(); return; }
+    Promise.all([c.use("db"), c.use("user")]).then(function (r) {
+      db = r[0];
+      if (!db) { setStatus("local", "Not shared"); synced = true; render(); return; }
+      return Promise.resolve(r[1] && r[1].can ? r[1].can("data.write") : null).catch(function () { return null; }).then(function (ok) {
+        if (ok === false) { canWrite = false; setStatus("ro", "View only"); } else setStatus("live", "Live, shared");
+        db.collection("rows").onSnapshot(function (snap) {
+          var next = {};
+          snap.docs.forEach(function (d) { next[d.id] = d.data(); });
+          rows = next; synced = true; scheduleRender();
+        }, function () { setStatus("err", "Connection lost. Reload the page."); });
+      });
+    }).catch(function () { setStatus("local", "Not shared"); synced = true; render(); });
+  }
+  window.__setWrite = function (ok) { canWrite = !!ok; setStatus(ok ? "live" : "ro", ok ? "Live, you can edit" : "Live, view only"); scheduleRender(); };
+  if (window.claude) connect(); else window.addEventListener("claude-ready", connect);
+})();
+</script>
+<style>
+.hd-r { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.btn.sm { padding: 6px 12px; font-size: 13px; }
+.authscrim { position: fixed; inset: 0; z-index: 40; background: rgba(10,16,24,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.authbox { background: var(--surface); color: var(--ink); border-radius: 10px; padding: 18px; width: min(100%, 360px); display: grid; gap: 10px; }
+.authbox h2 { margin: 0; font-size: 20px; }
+.authbox input { font: inherit; padding: 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); color: var(--ink); }
+.authbox .err { color: var(--bad); font-size: 13px; min-height: 1em; margin: 0; }
+.seedbar { margin: 12px 0; padding: 12px; border: 1px dashed var(--line-strong); border-radius: 8px; background: var(--surface); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+</style>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getFirestore, collection as fsCol, doc as fsDoc, setDoc, deleteDoc, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+var app = initializeApp({
+  apiKey: "AIzaSyDlF06ZozpvkUkfv_VUfKJFC8zTgFgGEHM",
+  authDomain: "dpo-schedule.firebaseapp.com",
+  projectId: "dpo-schedule",
+  storageBucket: "dpo-schedule.firebasestorage.app",
+  messagingSenderId: "773323198410",
+  appId: "1:773323198410:web:6c60450b4b6b5d39344933"
+});
+var fdb = getFirestore(app), auth = getAuth(app);
+var SEED = {"belt_0":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"}},"t":{"o":"275","w":"275"}},"belt_1":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"}},"t":{"o":"275","w":"275"}},"belt_2":{"d":{"0":{"n":"287","note":"Jake","ot":"D"},"1":{"n":"299","note":"Jake","ot":"D"},"2":{"n":"311","note":"DS","ot":"D"},"3":{"n":"323","note":"Extra","ot":"N"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"275","w":"275"}},"belt_3":{"d":{"0":{"s":"N"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}}},"cates_0":{"d":{"0":{"m":"o","n":"256","note":"DS","ot":"N"},"1":{"m":"o"},"2":{"m":"o"},"3":{"m":"o","note":"Sick"},"4":{"m":"b","s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"244","w":"208"}},"cates_1":{"d":{"0":{"s":"N"},"1":{"n":"268","note":"Sweeney","ot":"N"},"2":{"n":"280","note":"Sweeney","ot":"N"},"3":{"note":"ERT"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"256","w":"220"}},"cates_2":{"d":{"0":{"n":"292","note":"DS","ot":"D"},"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"},"4":{"m":"p"},"5":{"m":"p"},"6":{"m":"p"}},"t":{"o":"280","w":"244"}},"cates_3":{"d":{"0":{"m":"y","s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"}}},"crainer_0":{"d":{"0":{"s":"N"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"0","w":"0"}},"crainer_1":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"}},"t":{"o":"0","w":"0"}},"crainer_2":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"}},"t":{"o":"0","w":"0"}},"crainer_3":{"d":{"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"0","w":"0"}},"crooker_0":{"d":{"0":{"s":"N"},"3":{"m":"b","n":"303","note":"Extra","ot":"D"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"291","w":"279"}},"crooker_1":{"d":{"0":{"n":"315","note":"Extra","ot":"D"},"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"}},"t":{"o":"291","w":"279"}},"crooker_2":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"},"4":{"n":"327","note":"Extra","ot":"D"},"5":{"n":"339","note":"Extra","ot":"N"},"6":{"n":"351","note":"Juan","ot":"N"}},"t":{"o":"315","w":"303"}},"crooker_3":{"d":{"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}}},"delao_0":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"},"4":{"n":"251","note":"Thomas","ot":"N"}},"t":{"o":"259","w":"215"}},"delao_1":{"d":{"0":{"n":"263","note":"Extra","ot":"D"},"1":{"n":"275","note":"Extra","ot":"D"},"2":{"n":"287","note":"Extra","ot":"D"},"3":{"n":"299","note":"Caleb","ot":"D"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"251","w":"227"}},"delao_2":{"d":{"0":{"s":"N"},"2":{"n":"311","note":"Jake","ot":"D"},"3":{"n":"323","note":"DJ","ot":"D"},"4":{"s":"D"},"5":{"s":"D"},"6":{"m":"y","note":"Louis","s":"D"}},"t":{"o":"299","w":"275"}},"delao_3":{"d":{"1":{"m":"o","s":"N"},"2":{"s":"N"},"3":{"s":"N"}}},"flowers_0":{"d":{"0":{"s":"N"},"3":{"n":"345","note":"Extra","ot":"D"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"333","w":"285"}},"flowers_1":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"},"4":{"m":"p"},"5":{"m":"p"},"6":{"m":"p"}},"t":{"o":"345","w":"287"}},"flowers_2":{"d":{"0":{"m":"y","note":"Belt","s":"D"},"1":{"m":"y","note":"Belt","s":"D"},"2":{"m":"y","note":"Juan","s":"D"},"3":{"m":"y","note":"Darren","s":"D"},"4":{"m":"o"},"5":{"m":"o"},"6":{"m":"o"}},"t":{"o":"345","w":"287"}},"flowers_3":{"d":{"0":{"m":"o"},"1":{"m":"o"},"2":{"m":"o"},"3":{"m":"o"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}}},"hardeman_0":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"m":"y","note":"Thomas","s":"D"},"4":{"m":"p"},"5":{"m":"p"},"6":{"m":"p"}},"t":{"o":"259","w":"219"}},"hardeman_1":{"d":{"0":{"m":"p"},"1":{"n":"271","note":"Extra","ot":"D"},"2":{"n":"283","note":"Extra","ot":"D"},"3":{"n":"295","note":"Sweeney","ot":"N"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"259","w":"219"}},"hardeman_2":{"d":{"0":{"s":"N"},"2":{"n":"307","note":"Extra","ot":"D"},"3":{"n":"319","note":"Jake","ot":"D"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"295","w":"219"}},"hardeman_3":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"}}},"henderson_0":{"d":{"0":{"n":"252","note":"Extra","ot":"D"},"1":{"n":"264","note":"Extra","ot":"D"},"2":{"n":"276","note":"Extra","ot":"D"},"3":{"n":"288","note":"Extra","ot":"D"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"240","w":"240"}},"henderson_1":{"d":{"0":{"s":"N"},"3":{"n":"300","note":"Extra","ot":"D"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"288","w":"288"}},"henderson_2":{"d":{"0":{"n":"312","note":"Extra","ot":"D"},"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"},"5":{"n":"324","note":"Extra","ot":"D"},"6":{"n":"336","note":"Extra","ot":"D"}},"t":{"o":"300","w":"300"}},"henderson_3":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"}}},"petersen_0":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"}},"t":{"o":"302","w":"302"}},"petersen_1":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"}},"t":{"o":"302","w":"302"}},"petersen_2":{"d":{"0":{"n":"314","note":"Extra","ot":"D"},"1":{"n":"326","note":"DS","ot":"D"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"302","w":"302"}},"petersen_3":{"d":{"0":{"s":"N"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}}},"rios_0":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"},"4":{"m":"o","n":"278","note":"Sweeney","ot":"D"},"5":{"m":"o","n":"290","note":"Sweeney","ot":"D"},"6":{"m":"o","n":"302","note":"Sweeney","ot":"D"}},"t":{"o":"262","w":"262"}},"rios_1":{"d":{"0":{"m":"o"},"1":{"m":"o"},"2":{"m":"o"},"3":{"m":"o"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"278","w":"278"}},"rios_2":{"d":{"0":{"s":"N"},"2":{"n":"314","note":"Extra","ot":"D"},"3":{"n":"326","note":"Extra","ot":"D"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"302","w":"302"}},"rios_3":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"}}},"sobnosky_0":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"}},"t":{"o":"294","w":"258"}},"sobnosky_1":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"m":"b","note":"Delao","s":"D"},"4":{"m":"o"},"5":{"m":"o"},"6":{"m":"o"}},"t":{"o":"294","w":"258"}},"sobnosky_2":{"d":{"0":{"m":"o"},"1":{"m":"o"},"2":{"m":"o"},"3":{"m":"o"},"4":{"s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"294","w":"258"}},"sobnosky_3":{"d":{"0":{"s":"N"},"3":{"note":"ERT"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}}},"sweeney_0":{"d":{"0":{"m":"b","note":"Cates","s":"N"},"4":{"m":"b","s":"D"},"5":{"m":"b","s":"D"},"6":{"m":"b","s":"D"}},"t":{"o":"299","w":"263"}},"sweeney_1":{"d":{"1":{"m":"b","note":"Cates","s":"N"},"2":{"m":"b","note":"Cates","s":"N"},"3":{"m":"b","note":"Hardeman","s":"N"}},"t":{"o":"299","w":"263"}},"sweeney_2":{"d":{"0":{"m":"b","note":"Ross","s":"D"},"1":{"m":"b","note":"Cody","s":"D"},"2":{"m":"b","note":"Belt","s":"D"},"3":{"m":"b","note":"Juan","s":"D"}},"t":{"o":"299","w":"263"}},"sweeney_3":{"d":{"4":{"m":"b","s":"N"},"5":{"m":"b","s":"N"},"6":{"m":"b","s":"N"}}},"thomas_0":{"d":{"0":{"n":"260","note":"Extra","ot":"D"},"1":{"n":"272","note":"Extra","ot":"D"},"2":{"n":"284","note":"Extra","ot":"D"},"3":{"n":"296","note":"Hardeman","ot":"D"},"4":{"m":"y","note":"Delao","s":"N"},"5":{"s":"N"},"6":{"s":"N"}},"t":{"o":"248","w":"212"}},"thomas_1":{"d":{"0":{"s":"N"},"3":{"n":"308","note":"Extra","ot":"D"},"4":{"s":"D"},"5":{"s":"D"},"6":{"s":"D"}},"t":{"o":"296","w":"248"}},"thomas_2":{"d":{"1":{"s":"N"},"2":{"s":"N"},"3":{"s":"N"},"4":{"n":"320","note":"Extra","ot":"N"},"6":{"n":"332","note":"Extra","ot":"D"}},"t":{"o":"308","w":"260"}},"thomas_3":{"d":{"0":{"s":"D"},"1":{"s":"D"},"2":{"s":"D"},"3":{"s":"D"}}}};
+var rowCount = null;
+
+var authReady = new Promise(function (res) {
+  var first = true;
+  onAuthStateChanged(auth, function (u) {
+    var b = document.getElementById("authBtn");
+    if (b) b.textContent = u ? "Sign out" : "Lead sign in";
+    if (first) { first = false; res(); } else if (window.__setWrite) window.__setWrite(!!u);
+    showSeed();
+  });
+});
+
+function showSeed() {
+  var old = document.getElementById("seedbar"); if (old) old.remove();
+  if (!auth.currentUser || rowCount !== 0) return;
+  var d = document.createElement("div"); d.className = "seedbar"; d.id = "seedbar";
+  d.innerHTML = '<span>No schedule data yet. Load the Oct 12 – Nov 8 schedule that is on the board now.</span><button class="btn pri" type="button">Load current schedule</button>';
+  d.querySelector("button").onclick = function () {
+    var batch = writeBatch(fdb);
+    Object.keys(SEED).forEach(function (id) { batch.set(fsDoc(fdb, "rows", id), SEED[id]); });
+    batch.commit().then(function () { d.remove(); }, function () { alert("Could not load the schedule. Check that you are signed in."); });
+  };
+  var bar = document.querySelector(".bar"); bar.parentNode.insertBefore(d, bar);
+}
+
+window.claude = {
+  use: function (name) {
+    if (name === "user") return authReady.then(function () { return { can: function () { return !!auth.currentUser; } }; });
+    return Promise.resolve({
+      collection: function (n) {
+        return { onSnapshot: function (cb, err) {
+          return onSnapshot(fsCol(fdb, n), function (snap) { rowCount = snap.size; cb({ docs: snap.docs }); showSeed(); }, err);
+        } };
+      },
+      doc: function (path) {
+        var ref = fsDoc(fdb, path);
+        return { set: function (d) { return setDoc(ref, d); }, delete: function () { return deleteDoc(ref); } };
+      }
+    });
+  }
+};
+window.dispatchEvent(new Event("claude-ready"));
+
+document.getElementById("authBtn").addEventListener("click", function () {
+  if (auth.currentUser) { signOut(auth); return; }
+  var host = document.createElement("div"); host.className = "authscrim";
+  host.innerHTML = '<form class="authbox"><h2>Lead sign in</h2><input id="aEmail" type="email" placeholder="Email" autocomplete="username" required><input id="aPass" type="password" placeholder="Password" autocomplete="current-password" required><p class="err" id="aErr"></p><div class="btns"><button class="btn pri" type="submit">Sign in</button><button class="btn" type="button" id="aCancel">Cancel</button></div></form>';
+  document.body.appendChild(host);
+  host.querySelector("#aCancel").onclick = function () { host.remove(); };
+  host.querySelector("form").onsubmit = function (e) {
+    e.preventDefault();
+    signInWithEmailAndPassword(auth, host.querySelector("#aEmail").value.trim(), host.querySelector("#aPass").value)
+      .then(function () { host.remove(); }, function () { host.querySelector("#aErr").textContent = "Wrong email or password."; });
+  };
+});
+</script>
+</body>
+</html>
