@@ -1,0 +1,982 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a2330">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>DPO/Formalin OT Schedule</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: sticky name column on the left, one board row per operator grouped by shift, a week at a time (or all four), cells open a bottom sheet for editing. */
+:root {
+  --bg: #edf0f3;
+  --surface: #ffffff;
+  --surface2: #f5f7f9;
+  --ink: #1a2330;
+  --muted: #566475;
+  --line: #cbd3dc;
+  --line-strong: #8b98a8;
+  --accent: #1d5c8a;
+  --accent-ink: #ffffff;
+  --night: #27364d;
+  --night-ink: #ffffff;
+  --mark-p: #a8a39d;
+  --mark-y: #ffd23f;
+  --mark-o: #f29a4a;
+  --mark-b: #6fa3d8;
+  --mark-x: #d62f2f;
+  --day-bg: #fff0c9;
+  --day-ink: #6e4600;
+  --day-line: #d99a1c;
+  --today: #e1eff9;
+  --ok: #2c7a4b;
+  --bad: #b3261e;
+  --shadow: rgba(20, 30, 45, .28);
+  --f-name: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --f-body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --mark-x: #ff6b5e;
+    --day-bg: #4a3912;
+    --day-ink: #ffd98a;
+    --day-line: #b8892a;
+    --bg: #10151c; --surface: #18202a; --surface2: #1e2733; --ink: #e8edf2; --muted: #9aa8b8;
+    --line: #2d3947; --line-strong: #5a6b80; --accent: #72b6e8; --accent-ink: #08182a;
+    --night: #3c5375; --night-ink: #ffffff; --mark-p: #6c6862; --mark-y: #a58414; --mark-o: #b06a2c;
+    --mark-b: #3f6f9f; --today: #1c3345; --ok: #5cc185; --bad: #ff8a80; --shadow: rgba(0, 0, 0, .6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --mark-x: #ff6b5e;
+  --day-bg: #4a3912;
+  --day-ink: #ffd98a;
+  --day-line: #b8892a;
+  --bg: #10151c; --surface: #18202a; --surface2: #1e2733; --ink: #e8edf2; --muted: #9aa8b8;
+  --line: #2d3947; --line-strong: #5a6b80; --accent: #72b6e8; --accent-ink: #08182a;
+  --night: #3c5375; --night-ink: #ffffff; --mark-p: #6c6862; --mark-y: #a58414; --mark-o: #b06a2c;
+  --mark-b: #3f6f9f; --today: #1c3345; --ok: #5cc185; --bad: #ff8a80; --shadow: rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.4;
+  padding-block: 16px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+button, input { font: inherit; color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 16px; }
+h1 { margin: 0; font: 700 28px/1.05 var(--f-name); letter-spacing: .01em; text-wrap: balance; }
+.range { color: var(--muted); font-size: 14px; margin-top: 4px; }
+.status { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-strong); }
+.status[data-s="live"] .dot { background: var(--ok); }
+.status[data-s="ro"] .dot, .status[data-s="local"] .dot { background: var(--mark-y); }
+.status[data-s="err"] .dot { background: var(--bad); }
+
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; min-width: 0; }
+.tab { flex: 0 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; font: 600 14px var(--f-name); letter-spacing: .02em; white-space: nowrap; }
+.tab small { display: block; font: 500 11px var(--f-body); color: var(--muted); letter-spacing: 0; }
+.tab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tab[aria-pressed="true"] small { color: inherit; opacity: .85; }
+button:focus-visible, .cell:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: -2px; }
+
+.board { overflow-x: auto; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; }
+th, td { padding: 0; }
+.who { position: sticky; left: 0; z-index: 3; background: var(--surface); text-align: left; min-width: 118px; max-width: 118px; padding: 7px 8px; border-right: 2px solid var(--line-strong); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.nm { display: block; font: 600 15px/1.15 var(--f-name); }
+.tal { display: block; margin-top: 3px; padding: 2px 0; background: none; border: 0; cursor: pointer; font: 500 11px var(--f-num); color: var(--muted); text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; }
+.tal:hover { color: var(--accent); }
+.ots { display: block; font: 500 11px var(--f-body); color: var(--accent); }
+thead th { background: var(--surface2); border-bottom: 2px solid var(--line-strong); text-align: center; padding: 6px 2px; position: static; }
+thead th.corner { position: sticky; left: 0; z-index: 4; text-align: left; padding-left: 8px; font: 600 12px var(--f-name); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-right: 2px solid var(--line-strong); }
+.dh { min-width: 66px; }
+.dh .dw { display: block; font: 700 14px var(--f-name); }
+.dh .dd { display: block; font: 500 12px var(--f-num); color: var(--muted); }
+.dh.today, td.today { background-color: var(--today); }
+.dh.today .dd { color: var(--accent); font-weight: 600; }
+.wk { border-left: 2px solid var(--line-strong); }
+.grp th { background: var(--night); color: var(--night-ink); text-align: left; padding: 4px 8px; font: 600 12px var(--f-name); letter-spacing: .12em; text-transform: uppercase; position: sticky; left: 0; z-index: 3; }
+.grp td { background: var(--night); }
+td.c { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); height: 60px; background-color: var(--surface); }
+td.c.today { background-color: var(--today); }
+.cell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; height: 100%; min-height: 60px; background: none; border: 0; padding: 3px 2px; cursor: pointer; }
+.cell:hover { box-shadow: inset 0 0 0 2px var(--accent); }
+.sh { display: inline-flex; align-items: center; justify-content: center; gap: 3px; min-width: 24px; height: 24px; padding: 0 6px 0 4px; border-radius: 4px; font: 700 14px var(--f-name); }
+.sh svg, .ot svg { width: 14px; height: 14px; flex: none; }
+.s-D { border: 2px solid var(--day-line); background: var(--day-bg); color: var(--day-ink); }
+.s-N { background: var(--night); color: var(--night-ink); border: 2px solid var(--night); }
+.ot { display: inline-flex; align-items: center; gap: 3px; font: 600 11px/1.1 var(--f-num); border-radius: 999px; padding: 2px 6px 2px 4px; border: 1px dashed currentColor; }
+.ot.o-D { background: var(--day-bg); color: var(--day-ink); }
+.ot.o-N { background: var(--night); color: var(--night-ink); }
+.ot b { font-weight: 600; }
+.nt { font: 500 11px/1.1 var(--f-body); color: var(--ink); max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: var(--surface); border-radius: 3px; padding: 0 3px; }
+td.m-p { background-color: var(--mark-p); }
+td.m-y { background-color: var(--mark-y); }
+td.m-o { background-image: repeating-linear-gradient(135deg, var(--mark-o) 0 3px, transparent 3px 7px); }
+td.m-b { background-image: repeating-linear-gradient(135deg, var(--mark-b) 0 3px, transparent 3px 7px); }
+td.m-v { background-image: repeating-linear-gradient(135deg, var(--mark-y) 0 3px, transparent 3px 7px); }
+td.m-ld { background-image: radial-gradient(var(--mark-p) 1.6px, transparent 2.2px); background-size: 7px 7px; }
+td.m-x { background-image: repeating-linear-gradient(45deg, transparent 0 5px, var(--mark-x) 5px 7px), repeating-linear-gradient(-45deg, transparent 0 5px, var(--mark-x) 5px 7px); }
+td.m-y .nt, td.m-y .ot { background: transparent; color: #1a2330; }
+td.m-y .s-D { background: #fff; }
+
+.empty { margin: 0; padding: 10px 14px; border: 1px dashed var(--line-strong); border-radius: 8px; color: var(--muted); background: var(--surface); }
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px 18px; font-size: 13px; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.legend > div { display: flex; gap: 9px; align-items: flex-start; min-width: 0; }
+.sw { flex: 0 0 18px; height: 18px; border: 1px solid var(--line-strong); border-radius: 3px; margin-top: 1px; }
+.sw.p { background: var(--mark-p); } .sw.y { background: var(--mark-y); }
+.sw.o { background: repeating-linear-gradient(135deg, var(--mark-o) 0 3px, var(--surface) 3px 7px); }
+.sw.b { background: repeating-linear-gradient(135deg, var(--mark-b) 0 3px, var(--surface) 3px 7px); }
+.sw.v { background: repeating-linear-gradient(135deg, var(--mark-y) 0 3px, var(--surface) 3px 7px); }
+.sw.ld { background: radial-gradient(var(--mark-p) 1.4px, transparent 2px) 0 0 / 6px 6px, var(--surface); }
+.sw.x { background: repeating-linear-gradient(45deg, var(--surface) 0 3px, var(--mark-x) 3px 5px), repeating-linear-gradient(-45deg, transparent 0 3px, var(--mark-x) 3px 5px); }
+.sw.ic { display: grid; place-items: center; }
+.sw.ic svg { width: 14px; height: 14px; }
+.sw.dd { background: var(--day-bg); color: var(--day-ink); border-color: var(--day-line); }
+.sw.nn { background: var(--night); color: var(--night-ink); }
+.legend strong { color: var(--ink); font-weight: 600; }
+.foot { color: var(--muted); font-size: 13px; margin: 0; }
+
+.next { background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+.next-h { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 8px 12px; }
+.next h2 { margin: 0; font: 700 20px/1.1 var(--f-name); }
+.next h2 small { display: block; font: 500 13px/1.3 var(--f-body); color: var(--muted); margin-top: 4px; max-width: 60ch; }
+.sel { padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); font-weight: 500; }
+.nx-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+.nx { display: flex; align-items: center; gap: 10px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--surface2); min-width: 0; }
+.nx.first { border-color: var(--accent); background: var(--surface); box-shadow: inset 0 0 0 1px var(--accent); }
+.nx .rk { flex: none; width: 26px; text-align: center; font: 700 20px var(--f-name); color: var(--muted); }
+.nx.first .rk { color: var(--accent); }
+.nx .nn { min-width: 0; flex: 1; }
+.nx .nn b { display: block; font: 600 15px/1.15 var(--f-name); }
+.nx .nn span { font: 500 12px/1.3 var(--f-num); color: var(--muted); }
+.nx .tag { flex: none; font: 600 11px var(--f-name); letter-spacing: .06em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: var(--accent); color: var(--accent-ink); }
+.nx-out { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* next up controls and rules */
+.nx-ctl { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: flex-end; }
+.chk { display: flex; align-items: center; gap: 7px; padding: 10px 0; font-weight: 500; }
+.chk input { width: 18px; height: 18px; accent-color: var(--accent); }
+.nx.soft { border-style: dashed; }
+.nx .nn .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.nx .nn .pill { font: 600 11px/1.2 var(--f-name); letter-spacing: .03em; text-transform: uppercase; padding: 2px 6px; border-radius: 3px; background: var(--surface); border: 1px solid var(--line-strong); color: var(--ink); }
+.nx .nn .pill.warn { background: var(--mark-y); border-color: var(--mark-y); }
+.nx-empty { grid-column: 1 / -1; padding: 10px 12px; border: 1px dashed var(--line-strong); border-radius: 6px; color: var(--muted); font-size: 13px; }
+.nx-sub { margin: 4px 0 0; font: 600 12px var(--f-name); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+.nx-rule { margin: 0; font-size: 13px; color: var(--muted); max-width: 80ch; }
+tr.staff .who { background: var(--surface2); }
+td.sf { text-align: center; font: 600 13px var(--f-num); height: 32px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--surface2); }
+td.sf.low { background: var(--bad); color: var(--bg); }
+details.rules { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 13px; color: var(--muted); }
+details.rules summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+details.rules ul { margin: 8px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 5px; max-width: 80ch; }
+.warns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.warns:empty { display: none; }
+.warns li { display: flex; gap: 8px; align-items: center; font-size: 13px; line-height: 1.35; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface2); }
+.warns li.w { border-color: var(--mark-y); background: color-mix(in srgb, var(--mark-y) 24%, var(--surface)); }
+.warns .btn.sm { padding: 4px 9px; font-size: 12px; margin-left: auto; flex: none; }
+
+/* edit sheet */
+.scrim { position: fixed; inset: 0; background: var(--shadow); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet { width: 100%; max-width: 480px; max-height: 92%; overflow-y: auto; background: var(--surface); border-radius: 14px 14px 0 0; padding: 16px max(16px, env(safe-area-inset-left, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 14px; border: 1px solid var(--line-strong); border-bottom: 0; }
+@media (min-width: 560px) { .scrim { align-items: center; } .sheet { border-radius: 14px; border-bottom: 1px solid var(--line-strong); } }
+.sheet h2 { margin: 0; font: 700 21px/1.1 var(--f-name); }
+.sheet h2 span { display: block; font: 500 14px var(--f-body); color: var(--muted); margin-top: 3px; }
+.fld { display: flex; flex-direction: column; gap: 6px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.fld legend, .fld > label.t { font: 600 12px var(--f-name); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); padding: 0; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg label { position: relative; }
+.seg input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; padding: 9px 13px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); font-weight: 500; min-width: 48px; text-align: center; }
+.seg input:checked + span { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+.seg input:disabled + span { opacity: .55; }
+.txt { width: 100%; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row4 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.row4 .fld > label.t { text-align: center; }
+.row4 .txt { text-align: center; font-family: var(--f-num); padding-inline: 4px; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { padding: 11px 16px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--surface2); cursor: pointer; font-weight: 600; }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); flex: 1 1 auto; }
+.btn.del { color: var(--bad); }
+.hint { margin: 0; font-size: 13px; color: var(--muted); }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(18px + env(safe-area-inset-bottom, 0px)); z-index: 30; background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 8px; max-width: min(92vw, 420px); font-size: 14px; }
+@media (max-width: 480px) { h1 { font-size: 24px; } .who { min-width: 104px; max-width: 104px; } .dh { min-width: 58px; } }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: rise .16s ease-out; } @keyframes rise { from { transform: translateY(24px); opacity: .6; } } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>DPO/Formalin OT Schedule</h1>
+      <div class="range"><select class="psel" id="periodSel" aria-label="Schedule period"></select></div>
+    </div>
+    <div class="hd-r"><div class="status" id="status" data-s="wait" role="status"><span class="dot"></span><span id="statusText">Connecting</span></div><button class="btn sm" id="authBtn" type="button">Lead sign in</button></div>
+  </header>
+
+  <div class="saveerr" id="saveErr" role="alert" hidden><span>A change did not save, so it may disappear when you reload. Check your connection, sign in again if needed, and repeat the change.</span> <button class="btn sm" type="button" id="saveErrX">OK</button></div>
+
+  <div class="bar"><div class="tabs" id="tabs" role="group" aria-label="Week"></div></div>
+
+  <section class="next" aria-labelledby="nextT">
+    <div class="next-h">
+      <h2 id="nextT">Next up for overtime<small>Ranked the way the overtime procedure says. Choose the day, the slot and why overtime is needed.</small></h2>
+      <div class="nx-ctl">
+        <div class="fld"><label class="t" for="nextDay">Day</label><select class="sel" id="nextDay"></select></div>
+        <div class="fld"><label class="t" for="nextSlot">Slot</label><select class="sel" id="nextSlot"><option value="D">Day OT</option><option value="N">Night OT</option></select></div>
+        <div class="fld"><label class="t" for="nextKind">Reason</label><select class="sel" id="nextKind"><option value="sched">Scheduled overtime</option><option value="vac">Unscheduled vacation</option><option value="sick">Sick call-out</option><option value="hold">Hold-over, 4 hours or less</option></select></div>
+        <label class="chk" for="nextHol"><input type="checkbox" id="nextHol"> Holiday shift</label>
+      </div>
+    </div>
+    <ol class="nx-list" id="nxList"></ol>
+    <p class="nx-sub" id="nxLateH" hidden>Only if no one else is available (SOP 24f, 34c)</p>
+    <ol class="nx-list" id="nxLate"></ol>
+    <p class="nx-rule" id="nxRule"></p>
+    <p class="nx-out" id="nxOut"></p>
+  </section>
+
+  <p class="empty" id="peopleNote" hidden>The people list is empty. A lead can add it under Lead tools, Edit people list.</p>
+  <p class="empty" id="emptyNote" hidden>Nothing saved yet. Tap any cell to add a shift, an OT slot or a note.</p>
+
+  <div class="board" id="board"></div>
+
+  <section class="legend" aria-label="Legend">
+    <div><span class="sw y"></span><span><strong>Solid yellow.</strong> Two other people already have time off approved (SOP 2, 3). Schedule the day as normal. It is only granted if someone agrees to cover it. Otherwise it is not granted and no hours are charged.</span></div>
+    <div><span class="sw ic dd"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg></span><span><strong>Sun.</strong> Day shift (D) or a day overtime slot.</span></div>
+    <div><span class="sw ic nn"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 9.6A5.6 5.6 0 0 1 6.4 3 5.6 5.6 0 1 0 13 9.6z" fill="currentColor"/></svg></span><span><strong>Moon.</strong> Night shift (N) or a night overtime slot. Overtime slots have a dashed outline and the offered total written in the box.</span></div>
+    <div><span class="sw p"></span><span><strong>Gray.</strong> Protection.</span></div>
+    <div><span class="sw o"></span><span><strong>Orange hatch.</strong> On call. Not scheduled for overtime, but called first for sick call-outs.</span></div>
+    <div><span class="sw b"></span><span><strong>Blue hatch.</strong> Personal time off. No more than 2 people per day and per shift.</span></div>
+    <div><span class="sw v"></span><span><strong>Yellow hatch.</strong> Vacation. No more than 2 people per day and per shift.</span></div>
+    <div><span class="sw ld"></span><span><strong>Gray dots.</strong> Light duty. Not offered overtime.</span></div>
+    <div><span class="sw x"></span><span><strong>Red cross-hatch.</strong> OT was offered and turned down. The hours count as offered, not worked.</span></div>
+  </section>
+  <p class="foot">D is a day shift and N is a night shift. Tap a cell to edit it. Under each name, O is overtime hours offered and W is overtime hours worked. These are the totals through today. Tap them to edit the opening totals for the period. The number in an overtime cell is the running offered total after that slot. The Staffing rows at the bottom count who is working each day and night. Solid yellow days are not counted, because that person is expected to be covered by the overtime next to them. Red means fewer than 3.</p>
+  <section class="leadtools" id="leadTools" hidden>
+    <h2>Lead tools</h2>
+    <div class="lt-row"><button class="btn pri" type="button" id="btnNext">Start next 4 weeks</button><span class="hint" id="nextHint">Copies the shift pattern forward and carries each person's offered and worked totals into the new period as its opening totals.</span></div>
+    <div class="lt-row"><button class="btn" type="button" id="btnPeople">Edit people list</button><span class="hint">Names and crews. Add a new hire or change a crew letter here.</span></div>
+    <div class="lt-row"><select class="psel" id="resetWeek" aria-label="Week the new year starts"></select><button class="btn" type="button" id="btnReset">Start new year totals</button><span class="hint">Sets every person to 0 offered and 0 worked starting the chosen week (January 1 totals reset). OT from that week on adds up from zero.</span></div>
+  </section>
+
+  <details class="rules">
+    <summary>How the page applies the overtime procedure</summary>
+    <ul>
+      <li>Next up ranks the lowest offered hours first (SOP 25a, 29, 35). Holiday shifts rank the highest worked hours first (SOP 25b).</li>
+      <li>Skipped for overtime: protected days off, light duty, personal time off (blue), vacation (yellow hatch), already working that day, less than 8 hours rest (SOP 24, 34), and anyone set as not available for overtime. The on-call person is shown in orange when they are otherwise available.</li>
+      <li>Sick call-outs go to the on-call person first (SOP 31). Unscheduled vacation does not offer to on call (SOP 29).</li>
+      <li>Anyone on personal time off (blue) or vacation (yellow hatch) that day is left off the Next up list.</li>
+      <li>A seventh day in a row is flagged as double time (SOP 34c).</li>
+      <li>Editing a cell warns about overtime that breaks a rule, more than 2 people off per day or per shift (SOP 2, 3), more than 1 person protected (SOP 18), fewer than 3 on a shift (SOP 1), offered totals that go down, and changes to posted overtime (SOP 22).</li>
+      <li>Warnings never block a save. Deviations from the call-out policy should be approved by management (SOP 32).</li>
+      <li>Not checked: vacation request deadlines (SOP 4 to 6), the on-call rotation (SOP 7 to 16) and hold-over length.</li>
+    </ul>
+  </details>
+</div>
+
+<div id="sheetHost"></div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  "use strict";
+  var PEOPLE = [];   // filled from the database after sign-in
+  var DOW = ["M", "T", "W", "T", "F", "S", "S"];
+  var DOWFULL = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  var MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var FIRST = new Date(2026, 9, 12), START = FIRST;
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  function iso(dt) { return dt.getFullYear() + "-" + pad2(dt.getMonth() + 1) + "-" + pad2(dt.getDate()); }
+  function addDays(dt, n) { return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + n); }
+  function ridFor(st, pid, w) { return (iso(st) === iso(FIRST) ? "" : iso(st) + "_") + pid + "_" + w; }
+  function hasRows(st) {
+    var pre = iso(st) + "_", first = iso(st) === iso(FIRST);
+    return Object.keys(rows).some(function (k) { return first ? !/^\d{4}-/.test(k) : k.indexOf(pre) === 0; });
+  }
+  function periodList() {
+    var out = [], s = FIRST, now = new Date(), k = 0;
+    while (k < 60 && (k === 0 || s <= now || hasRows(s))) { out.push(s); s = addDays(s, 28); k++; }
+    return out;
+  }
+  function periodLabel(st) { var a = st, b = addDays(st, 27); return MON[a.getMonth()] + " " + a.getDate() + " – " + MON[b.getMonth()] + " " + b.getDate() + ", " + b.getFullYear(); }
+  function shortRange() { var a = dayOf(0, 0), b = dayOf(3, 6); return MON[a.getMonth()] + " " + a.getDate() + " – " + MON[b.getMonth()] + " " + b.getDate(); }
+
+  var MARKS = { p: "Protection (gray)", y: "Light yellow", o: "Orange hatch", b: "Blue hatch" };
+  var SUN = '<svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.1 3.1l1.4 1.4M11.5 11.5l1.4 1.4M3.1 12.9l1.4-1.4M11.5 4.5l1.4-1.4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/></svg>';
+  var MOON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 9.6A5.6 5.6 0 0 1 6.4 3 5.6 5.6 0 1 0 13 9.6z" fill="currentColor"/></svg>';
+  function otType(v) { return !v ? "" : (v === "N" || v === "12-1") ? "N" : "D"; }
+
+  var rows = {};          // docId -> {d:{0..6:{s,ot,n,note,m}}, t:{o,w,p,v}}
+  var db = null, canWrite = true, synced = false, view = "0", openCtx = null;
+  var chains = {}, pending = 0;
+  function showSaveErr(on) { $("saveErr").hidden = !on; }
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function dayOf(w, d) { return new Date(START.getFullYear(), START.getMonth(), START.getDate() + w * 7 + d); }
+  function sameDay(a, b) { return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate(); }
+  function weekLabel(w) {
+    var a = dayOf(w, 0), b = dayOf(w, 6);
+    return MON[a.getMonth()] + " " + a.getDate() + " – " + (a.getMonth() === b.getMonth() ? "" : MON[b.getMonth()] + " ") + b.getDate();
+  }
+  function todayWeek() {
+    var now = new Date();
+    for (var w = 0; w < 4; w++) for (var d = 0; d < 7; d++) if (sameDay(dayOf(w, d), now)) return w;
+    return now < START ? 0 : 3;
+  }
+  function rid(pid, w) { return ridFor(START, pid, w); }
+  function getRow(pid, w) { return rows[rid(pid, w)] || {}; }
+
+  function setStatus(s, text) { var el = $("status"); el.setAttribute("data-s", s); $("statusText").textContent = text; }
+  var toastTimer;
+  function toast(msg) {
+    var t = $("toast"); t.textContent = msg; t.hidden = false;
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.hidden = true; }, 3800);
+  }
+
+  /* ---------- render ---------- */
+  var raf = 0;
+  function scheduleRender() { if (!raf) raf = requestAnimationFrame(function () { raf = 0; render(); }); }
+
+  function focusWeek() { return view === "all" ? todayWeek() : parseInt(view, 10); }
+
+  function renderTabs() {
+    var h = "";
+    for (var w = 0; w < 4; w++) h += '<button class="tab" type="button" data-view="' + w + '" aria-pressed="' + (view === String(w)) + '">Week ' + (w + 1) + "<small>" + weekLabel(w) + "</small></button>";
+    h += '<button class="tab" type="button" data-view="all" aria-pressed="' + (view === "all") + '">All 4 weeks<small>" + shortRange() + "</small></button>';
+    $("tabs").innerHTML = h;
+  }
+
+  function cellHtml(pid, w, d, today) {
+    var c = (getRow(pid, w).d || {})[d] || {};
+    var cls = "c" + (c.m ? " m-" + c.m : "") + (today ? " today" : "") + (d === 0 && view === "all" && w > 0 ? " wk" : "");
+    var inner = "";
+    if (c.s) inner += '<span class="sh s-' + esc(c.s) + '">' + (c.s === "N" ? MOON : SUN) + esc(c.s) + "</span>";
+    var ot = otType(c.ot);
+    if (ot) inner += '<span class="ot o-' + ot + '" title="' + (ot === "N" ? "Night" : "Day") + ' overtime">' + (ot === "N" ? MOON : SUN) + "<b>" + totalsAt(pid, w * 7 + d).o + "</b>" + "</span>";
+    if (c.note) inner += '<span class="nt" title="' + esc(c.note) + '">' + esc(c.note) + "</span>";
+    var label = DOWFULL[d] + " " + MON[dayOf(w, d).getMonth()] + " " + dayOf(w, d).getDate() + ", " + PEOPLE.filter(function (p) { return p[0] === pid; })[0][1] + (c.s ? ", " + (c.s === "D" ? "day" : "night") : "") + (c.ot ? ", " + (otType(c.ot) === "N" ? "night" : "day") + " overtime" : "") + (!c.s && !c.ot ? ", empty" : "");
+    return '<td class="' + cls + '"><button class="cell" type="button" data-pid="' + pid + '" data-w="' + w + '" data-d="' + d + '" aria-label="' + esc(label) + '">' + inner + "</button></td>";
+  }
+
+  function render() {
+    var weeks = view === "all" ? [0, 1, 2, 3] : [parseInt(view, 10)];
+    var now = new Date(), fw = focusWeek();
+    var span = weeks.length * 7;
+    var h = '<table><thead><tr><th class="corner" scope="col">Operator</th>';
+    weeks.forEach(function (w) {
+      for (var d = 0; d < 7; d++) {
+        var dt = dayOf(w, d);
+        h += '<th scope="col" class="dh' + (sameDay(dt, now) ? " today" : "") + (d === 0 && weeks.length > 1 && w > 0 ? " wk" : "") + '"><span class="dw">' + DOW[d] + '</span><span class="dd">' + dt.getDate() + " " + MON[dt.getMonth()] + "</span></th>";
+      }
+    });
+    h += "</tr></thead><tbody>";
+    var lastShift = "";
+    PEOPLE.forEach(function (p) {
+      var pid = p[0];
+      if (p[2] !== lastShift) {
+        lastShift = p[2];
+        h += '<tr class="grp"><th scope="rowgroup">Shift ' + lastShift + '</th><td colspan="' + span + '"></td></tr>';
+      }
+      var slots = 0;
+      weeks.forEach(function (w) { var dd = getRow(pid, w).d || {}; Object.keys(dd).forEach(function (k) { if (dd[k].ot) slots++; }); });
+      var t = totalsAt(pid, todayIdx());
+      var tl = "O " + t.o + " · W " + t.w;
+      h += '<tr><th class="who" scope="row"><span class="nm">' + esc(p[1]) + '</span><button class="tal" type="button" data-pid="' + pid + '" data-w="0" title="Totals through today. Tap to edit the opening totals." aria-label="Opening totals for ' + esc(p[1]) + '">' + esc(tl) + "</button>" + (slots ? '<span class="ots">' + slots + " OT slot" + (slots > 1 ? "s" : "") + "</span>" : "") + "</th>";
+      weeks.forEach(function (w) { for (var d = 0; d < 7; d++) h += cellHtml(pid, w, d, sameDay(dayOf(w, d), now)); });
+      h += "</tr>";
+    });
+    h += '<tr class="grp"><th scope="rowgroup">Staffing, minimum 3</th><td colspan="' + span + '"></td></tr>';
+    [["D", "Day staff"], ["N", "Night staff"]].forEach(function (r) {
+      h += '<tr class="staff"><th class="who" scope="row"><span class="nm">' + r[1] + "</span></th>";
+      weeks.forEach(function (w) { for (var d = 0; d < 7; d++) { var n = staffCount(w * 7 + d, r[0]); h += '<td class="sf' + (n < 3 ? " low" : "") + '"><button class="sfb" type="button" data-i="' + (w * 7 + d) + '" data-t="' + r[0] + '" aria-label="' + r[1] + " " + dayName(w * 7 + d) + ": " + n + '. Tap to see who.">' + n + "</button></td>"; } });
+      h += "</tr>";
+    });
+    h += "</tbody></table>";
+    var board = $("board"), sx = board.scrollLeft;
+    board.innerHTML = h;
+    board.scrollLeft = sx;
+    $("emptyNote").hidden = !(synced && Object.keys(rows).length === 0);
+    renderNext();
+    renderPeriod();
+    $("peopleNote").hidden = PEOPLE.length > 0 || !synced;
+  }
+
+  var periodKey = "";
+  function renderPeriod() {
+    var list = periodList(), key = list.map(iso).join(",") + "|" + iso(START);
+    if (key !== periodKey) {
+      periodKey = key;
+      $("periodSel").innerHTML = list.map(function (s) { return '<option value="' + iso(s) + '"' + (iso(s) === iso(START) ? " selected" : "") + ">" + periodLabel(s) + "</option>"; }).join("");
+    }
+    var lt = $("leadTools"); lt.hidden = !canWrite;
+    var latest = iso(list[list.length - 1]) === iso(START) && !hasRows(addDays(START, 28));
+    $("btnNext").hidden = !latest; $("nextHint").hidden = !latest;
+    var rw = $("resetWeek"), rk = "w" + iso(START);
+    if (rw.getAttribute("data-k") !== rk) {
+      rw.setAttribute("data-k", rk);
+      rw.innerHTML = [0, 1, 2, 3].map(function (w) { return '<option value="' + w + '">Week of ' + weekLabel(w) + "</option>"; }).join("");
+    }
+  }
+  function setPeriod(st) {
+    START = st; view = String(todayWeek()); periodKey = "";
+    buildNextDays(); renderTabs(); render(); scrollToToday();
+  }
+  function startNext() {
+    var ns = addDays(START, 28);
+    if (hasRows(ns)) { toast("The next period already exists."); return; }
+    if (!window.confirm("Start " + periodLabel(ns) + "? It copies this period's shifts and carries every person's offered and worked totals forward.")) return;
+    var list = [];
+    PEOPLE.forEach(function (p) {
+      var carry = totalsAt(p[0], 27);
+      for (var w = 0; w < 4; w++) {
+        var doc = {}, src = getRow(p[0], w).d || {}, dd = {};
+        if (w === 0) doc.t = { o: String(carry.o), w: String(carry.w) };
+        for (var k = 0; k < 7; k++) if (src[k] && src[k].s) dd[k] = { s: src[k].s };
+        if (Object.keys(dd).length) doc.d = dd;
+        if (Object.keys(doc).length) list.push({ path: "rows/" + ridFor(ns, p[0], w), data: doc });
+      }
+    });
+    if (!db || !db.batchSet) { toast("Not connected, so the new period could not be saved."); return; }
+    db.batchSet(list).then(function () { setPeriod(ns); toast("New period started."); }, function () { toast("That did not save. Check that you are signed in."); });
+  }
+  function resetYear() {
+    var k0 = +$("resetWeek").value;
+    if (!window.confirm("Set everyone's totals to 0 offered and 0 worked from the week of " + weekLabel(k0) + " on?")) return;
+    PEOPLE.forEach(function (p) {
+      persist(p[0], k0, function (doc) { doc.t = { o: "0", w: "0", r: true }; });
+    });
+    toast("New year totals set.");
+  }
+  document.addEventListener("change", function (e) { if (e.target && e.target.id === "periodSel") setPeriod(new Date(e.target.value + "T00:00:00")); });
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "btnNext") startNext();
+    if (e.target && e.target.id === "btnReset") resetYear();
+    if (e.target && e.target.id === "btnPeople") openPeople();
+    if (e.target && e.target.id === "saveErrX") showSaveErr(false);
+  });
+
+  function scrollToToday() {
+    if (view === "all") return;
+    var b = $("board"), el = b.querySelector("td.today");
+    if (el) b.scrollLeft = Math.max(0, el.offsetLeft - 140);
+  }
+
+  /* ---------- saving ---------- */
+  function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
+  function queue(id, fn) {
+    var prev = chains[id] || Promise.resolve();
+    var next = prev.catch(function () {}).then(fn);
+    chains[id] = next; return next;
+  }
+  function persist(pid, w, mutate) {
+    var id = rid(pid, w);
+    var doc = clone(rows[id]);
+    mutate(doc);
+    if (doc.d && !Object.keys(doc.d).length) delete doc.d;
+    if (doc.t && !doc.t.o && !doc.t.w && !doc.t.p && !doc.t.v) delete doc.t;
+    var empty = !doc.d && !doc.t;
+    if (empty) delete rows[id]; else rows[id] = doc;   // shown at once; the live feed confirms it
+    render();
+    if (!db) return Promise.resolve();
+    pending++; setStatus("wait", "Saving…");
+    var slow = setTimeout(function () { if (pending) setStatus("err", "Still saving… check your connection"); }, 8000);
+    return queue(id, function () {
+      var ref = db.doc("rows/" + id);
+      return empty ? ref.delete() : ref.set(doc);
+    }).then(function () {
+      clearTimeout(slow); pending--;
+      if (!pending) { showSaveErr(false); setStatus(canWrite ? "live" : "ro", "Saved " + new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })); }
+    }, function (e) {
+      clearTimeout(slow); pending--; showSaveErr(true);
+      if (e && (e.code === "invalid_argument" || e.code === "permission-denied")) { canWrite = false; setStatus("ro", "View only"); }
+      else setStatus("err", "Not saved");
+    });
+  }
+
+  /* ---------- sheet ---------- */
+  function seg(name, opts, cur) {
+    return '<div class="seg">' + opts.map(function (o, i) {
+      return '<label><input type="radio" name="' + name + '" value="' + esc(o[0]) + '" id="' + name + i + '"' + (String(cur || "") === o[0] ? " checked" : "") + (canWrite ? "" : " disabled") + "><span>" + esc(o[1]) + "</span></label>";
+    }).join("") + "</div>";
+  }
+  function closeSheet() { $("sheetHost").innerHTML = ""; openCtx = null; }
+  function personName(pid) { return PEOPLE.filter(function (p) { return p[0] === pid; })[0][1]; }
+
+  function openCell(pid, w, d) {
+    var c = (getRow(pid, w).d || {})[d] || {};
+    var dt = dayOf(w, d), dis = canWrite ? "" : " disabled";
+    openCtx = { pid: pid, w: w, d: d };
+    $("sheetHost").innerHTML =
+      '<div class="scrim" id="scrim"><form class="sheet" id="cellForm" role="dialog" aria-modal="true" aria-labelledby="shT">' +
+      '<h2 id="shT">' + esc(personName(pid)) + "<span>" + DOWFULL[d] + ", " + MON[dt.getMonth()] + " " + dt.getDate() + "</span></h2>" +
+      '<fieldset class="fld"><legend>Shift</legend>' + seg("s", [["", "None"], ["D", "Day"], ["N", "Night"]], c.s) + "</fieldset>" +
+      '<fieldset class="fld"><legend>Overtime</legend>' + seg("ot", [["", "None"], ["D", "Day OT"], ["N", "Night OT"]], otType(c.ot)) +
+      '<div class="row2"><div class="fld"><label class="t" for="fH">Hours (12 if blank)</label><input class="txt" id="fH" inputmode="decimal" maxlength="4" placeholder="12" value="' + esc(c.h || "") + '"' + dis + "></div>" +
+      '<div class="fld"><label class="t" for="fNote">Note</label><input class="txt" id="fNote" maxlength="24" placeholder="Extra, name" value="' + esc(c.note || "") + '"' + dis + "></div></div></fieldset>" +
+      '<fieldset class="fld"><legend>Mark</legend>' + seg("m", [["", "None"], ["p", "Protection"], ["y", "Over limit, pending"], ["o", "On call"], ["b", "Personal time off"], ["v", "Vacation"], ["ld", "Light duty"], ["x", "Declined OT"]], c.m) + "</fieldset>" +
+      '<ul class="warns" id="warns" aria-live="polite"></ul>' +
+      (canWrite ? "" : '<p class="hint">You can view this schedule but not change it.</p>') +
+      '<div class="btns">' + (canWrite ? '<button class="btn pri" type="submit" id="saveBtn">Save</button>' : "") + '<button class="btn" type="button" id="cancel">' + (canWrite ? "Cancel" : "Close") + "</button>" + (canWrite ? '<button class="btn del" type="button" id="clearCell">Clear cell</button>' : "") + "</div></form></div>";
+    $("cellForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var f = $("cellForm"), v = function (n) { var x = f.querySelector('input[name="' + n + '"]:checked'); return x ? x.value : ""; };
+      var nc = {};
+      if (v("s")) nc.s = v("s");
+      if (v("ot")) nc.ot = v("ot");
+      var note = $("fNote").value.trim(), hv = $("fH").value.trim();
+      if (note) nc.note = note;
+      if (hv && parseFloat(hv) !== 12 && nc.ot) nc.h = hv;
+      if (!nc.ot && c.ot) { if (note === (c.note || "")) delete nc.note; if (nc.m === "x") delete nc.m; }
+      if (v("m")) nc.m = v("m");
+      var ctx = openCtx; closeSheet();
+      persist(ctx.pid, ctx.w, function (doc) {
+        doc.d = doc.d || {};
+        if (Object.keys(nc).length) doc.d[ctx.d] = nc; else delete doc.d[ctx.d];
+      });
+    });
+    bindGuard(pid, w, d);
+    var cl = $("clearCell");
+    if (cl) cl.addEventListener("click", function () { var ctx = openCtx; closeSheet(); persist(ctx.pid, ctx.w, function (doc) { if (doc.d) delete doc.d[ctx.d]; }); });
+    $("cancel").addEventListener("click", closeSheet);
+    $("scrim").addEventListener("click", function (e) { if (e.target.id === "scrim") closeSheet(); });
+  }
+
+  function openTally(pid, w) {
+    var t = getRow(pid, w).t || {}, dis = canWrite ? "" : " disabled";
+    openCtx = { pid: pid, w: w };
+    function fld(k, l) { return '<div class="fld"><label class="t" for="t' + k + '">' + l + '</label><input class="txt" id="t' + k + '" inputmode="numeric" maxlength="6" value="' + esc(t[k] || "") + '"' + dis + "></div>"; }
+    $("sheetHost").innerHTML =
+      '<div class="scrim" id="scrim"><form class="sheet" id="talForm" role="dialog" aria-modal="true" aria-labelledby="shT">' +
+      '<h2 id="shT">' + esc(personName(pid)) + "<span>Opening totals, " + periodLabel(START) + "</span></h2>" +
+      '<div class="row4">' + fld("o", "Offered") + fld("w", "Worked") + "</div>" +
+      '<p class="hint">Overtime hours offered and worked at the start of this 4-week period. Everything after that adds up automatically from the overtime in the cells.</p>' +
+      '<div class="btns">' + (canWrite ? '<button class="btn pri" type="submit">Save</button>' : "") + '<button class="btn" type="button" id="cancel">' + (canWrite ? "Cancel" : "Close") + "</button></div></form></div>";
+    $("talForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var nt = {};
+      ["o", "w"].forEach(function (k) { var x = $("t" + k).value.trim(); if (x) nt[k] = x; });
+      var ctx = openCtx; closeSheet();
+      if ((getRow(ctx.pid, ctx.w).t || {}).r) nt.r = true;
+      persist(ctx.pid, ctx.w, function (doc) { if (Object.keys(nt).length) doc.t = nt; else delete doc.t; });
+    });
+    $("cancel").addEventListener("click", closeSheet);
+    $("scrim").addEventListener("click", function (e) { if (e.target.id === "scrim") closeSheet(); });
+  }
+
+  function openStaff(i, t) {
+    var yes = [], no = [];
+    PEOPLE.forEach(function (p) {
+      var c = cellAt(p[0], i), isShift = c.s === t, isOt = !!c.ot && otType(c.ot) === t;
+      if (!isShift && !isOt) return;
+      var tag = c.m === "o" ? "on call" : c.m === "ld" ? "light duty" : c.m === "p" ? "protected" : "";
+      if (absent(c)) no.push([p, c.m === "v" ? "Vacation (yellow hatch)" : "Personal time off (blue)"]);
+      else if (c.m === "y" && covers(c, t)) no.push([p, "Over the limit (solid yellow), expected to be covered"]);
+      else if (covers(c, t)) yes.push([p, (isShift ? "On shift" : "Overtime" + (c.note ? ", " + c.note : "") + (c.h && +c.h !== 12 ? ", " + c.h + " hrs" : "")) + (tag ? ", " + tag : "")]);
+      else no.push([p, "Declined overtime"]);
+    });
+    function li(x) { return '<li><span><b>' + esc(x[0][1]) + '</b> <small>Shift ' + x[0][2] + '</small></span><span class="how">' + esc(x[1]) + "</span></li>"; }
+    openCtx = { staff: true };
+    $("sheetHost").innerHTML =
+      '<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shT">' +
+      '<h2 id="shT">' + (t === "D" ? "Day staff" : "Night staff") + "<span>" + dayName(i) + " · " + yes.length + " counted" + (yes.length < 3 ? ", under the minimum of 3" : "") + "</span></h2>" +
+      (yes.length ? '<ul class="stl">' + yes.map(li).join("") + "</ul>" : '<p class="hint">No one is scheduled.</p>') +
+      (no.length ? '<h3 class="stn">Not counted</h3><ul class="stl dim">' + no.map(li).join("") + "</ul>" : "") +
+      '<div class="btns"><button class="btn" type="button" id="cancel">Close</button></div></div></div>';
+    $("cancel").addEventListener("click", closeSheet);
+    $("scrim").addEventListener("click", function (e) { if (e.target.id === "scrim") closeSheet(); });
+  }
+
+  /* ---------- next up ---------- */
+  var nextDay = 0;
+  function initNext() {
+    buildNextDays();
+    var sel = $("nextDay");
+    sel.addEventListener("change", function () { nextDay = +sel.value; renderNext(); });
+    ["nextSlot", "nextKind", "nextHol"].forEach(function (id) { $(id).addEventListener("change", renderNext); });
+  }
+  function buildNextDays() {
+    var sel = $("nextDay"), h = "", now = new Date(), idx = 0;
+    for (var i = 0; i < 28; i++) {
+      var w = Math.floor(i / 7), d = i % 7, dt = dayOf(w, d);
+      if (sameDay(dt, now)) idx = i;
+      h += '<option value="' + i + '">' + DOWFULL[d] + " " + MON[dt.getMonth()] + " " + dt.getDate() + "</option>";
+    }
+    sel.innerHTML = h; nextDay = idx; sel.value = String(idx);
+  }
+  function num(x) { var n = parseFloat(x); return isNaN(n) ? 0 : n; }
+  function slotHours(c) { var h = parseFloat(c.h); return !isNaN(h) && h > 0 ? h : 12; }
+  function baseFor(pid, w) {   // opening totals: week 1 of the period, or the week a new year reset starts
+    var k, t;
+    for (k = Math.min(3, Math.max(0, w)); k >= 1; k--) { t = getRow(pid, k).t; if (t && t.r) return { k: k, o: num(t.o), w: num(t.w) }; }
+    t = getRow(pid, 0).t || {};
+    return { k: 0, o: num(t.o), w: num(t.w) };
+  }
+  function rawCell(pid, i) { return ((getRow(pid, Math.floor(i / 7)).d || {})[i % 7]) || {}; }
+  function totalsAt(pid, upto) {   // opening totals plus the overtime on days 0..upto of this period
+    var top = Math.min(27, upto), b = baseFor(pid, Math.floor(Math.max(0, top) / 7)), o = b.o, w = b.w, i, c, h;
+    for (i = b.k * 7; i <= top; i++) {
+      c = rawCell(pid, i);
+      if (c.ot) { h = slotHours(c); o += h; if (c.m !== "x") w += h; }
+    }
+    return { o: o, w: w };
+  }
+  function offeredFor(pid, w, d) {   // for Next up: everything scheduled before this day, offered and worked, even if not worked yet
+    return totalsAt(pid, w * 7 + d - 1);
+  }
+  var RULES = {
+    sched: "Lowest offered hours first, for a 12 hour shift on a day off (SOP 25a). Overtime is scheduled and posted by Wednesday for the following Monday to Sunday (SOP 20).",
+    hol: "Holiday shift: highest worked hours first. They may refuse and it passes to the next highest worked. If no one accepts, the lowest worked person covers (SOP 25b).",
+    vac: "Offer the lowest offered hours first, then the next lowest. If someone agrees, the vacation is approved. If no one can cover it, it is not approved. On call is not offered (SOP 29).",
+    sick: "The on-call person is called first (SOP 31). If no one agrees to work it, the on-call person is forced out (SOP 30). On Monday to Friday days, day staff or a night processor coming out early may cover sick time to keep on call available.",
+    hold: "Hold-over is 4 hours or less. Everyone working that shift is offered it, lowest offered first. If all decline, the lowest worked person covers (SOP 35). Slot means the shift that needs it."
+  };
+  function nxItem(e, n, first, soft, isOc) {
+    var sh = e.s === "D" ? "Day shift" : e.s === "N" ? "Night shift" : e.ot ? (otType(e.ot) === "N" ? "Night OT" : "Day OT") : "Off";
+    var tags = e.ev.tags.map(function (t) { return '<span class="pill">' + esc(t) + "</span>"; }).concat(e.ev.soft.map(function (t) { return '<span class="pill warn">' + esc(t) + "</span>"; })).join("");
+    return '<li class="nx' + (first ? " first" : "") + (soft ? " soft" : "") + (isOc ? " oc" : "") + '"><span class="rk">' + n + '</span><span class="nn"><b>' + esc(e.name) + "</b><span>" + e.g + " · " + sh + " · O " + e.t.o + " · W " + e.t.w + "</span>" + (tags ? '<span class="tags">' + tags + "</span>" : "") + "</span>" + (first ? '<span class="tag">Next</span>' : "") + "</li>";
+  }
+  function renderNext() {
+    var i = nextDay, w = Math.floor(i / 7), d = i % 7, slot = $("nextSlot").value, kind = $("nextKind").value;
+    var holBox = $("nextHol"); holBox.disabled = kind !== "sched";
+    var hol = holBox.checked && kind === "sched";
+    var ok = [], late = [], out = [], oc = [];
+    PEOPLE.forEach(function (p) {
+      var ev = evalPerson(p[0], i, slot, kind), e = { name: p[1], g: p[2], s: cellAt(p[0], i).s, ot: cellAt(p[0], i).m !== "x" ? cellAt(p[0], i).ot : "", t: offeredFor(p[0], w, d), ev: ev };
+      if (ev.block.length) out.push(p[1] + " (" + ev.block.join(", ") + ")");
+      else if (ev.onCall) oc.push(e);
+      else if (ev.soft.length) late.push(e); else ok.push(e);
+    });
+    var cmp = function (a, b) {
+      if (kind === "sick" && a.ev.first !== b.ev.first) return a.ev.first ? -1 : 1;
+      if (hol) { if (a.t.w !== b.t.w) return b.t.w - a.t.w; if (a.t.o !== b.t.o) return a.t.o - b.t.o; }
+      else { if (a.t.o !== b.t.o) return a.t.o - b.t.o; if (a.t.w !== b.t.w) return a.t.w - b.t.w; }
+      return a.name < b.name ? -1 : 1;
+    };
+    ok.sort(cmp); late.sort(cmp);
+    var ocFirst = kind === "sick" && oc.length > 0;
+    $("nxList").innerHTML = oc.map(function (e) { return nxItem(e, "OC", ocFirst, false, true); }).join("") +
+      (ok.length ? ok.map(function (e, k) { return nxItem(e, k + 1, k === 0 && !ocFirst, false); }).join("")
+      : (late.length || oc.length ? "" : '<li class="nx-empty">No one is available for this. Deviations should be approved by management (SOP 32).</li>'));
+    $("nxLateH").hidden = !late.length;
+    $("nxLate").innerHTML = late.map(function (e, k) { return nxItem(e, ok.length + k + 1, !ok.length && !ocFirst && k === 0, true); }).join("");
+    $("nxRule").textContent = RULES[hol ? "hol" : kind] + (oc.length ? " Orange is the on-call person, shown because they are available. On call is not scheduled for regular overtime or vacation coverage (SOP 24a, 29) but is called first for sick call-outs (SOP 31)." : "");
+    $("nxOut").textContent = out.length ? "Not available: " + out.join(", ") + "." : "";
+  }
+
+  /* ---------- procedure rules ---------- */
+  function todayIdx() {
+    var now = new Date();
+    for (var i = 0; i < 28; i++) if (sameDay(dayOf(Math.floor(i / 7), i % 7), now)) return i;
+    return now < START ? -1 : 28;
+  }
+  function dayName(i) { var dt = dayOf(Math.floor(i / 7), i % 7); return DOWFULL[i % 7] + " " + MON[dt.getMonth()] + " " + dt.getDate(); }
+  var OVERRIDE = null;   // {pid, i, cell}: treat this cell as if it held something else, to check an edit before it is saved
+  function cellAt(pid, i) {
+    if (OVERRIDE && OVERRIDE.pid === pid && OVERRIDE.i === i) return OVERRIDE.cell;
+    if (i < 0) return (((rows[ridFor(addDays(START, -28), pid, 3)] || {}).d || {})[7 + i]) || {};
+    if (i > 27) return (((rows[ridFor(addDays(START, 28), pid, 0)] || {}).d || {})[i - 28]) || {};
+    return ((getRow(pid, Math.floor(i / 7)).d || {})[i % 7]) || {};
+  }
+  function absent(c) { return c.m === "b" || c.m === "v"; }
+  function covers(c, t) { return !absent(c) && (c.s === t || (!!c.ot && c.m !== "x" && otType(c.ot) === t)); }
+  function works(c) { return covers(c, "D") || covers(c, "N"); }
+  function staffCount(i, t) {
+    var n = 0;
+    PEOPLE.forEach(function (p) { var c = cellAt(p[0], i); if (c.m !== "y" && covers(c, t)) n++; });
+    return n;
+  }
+  function isNoOt(pid) { return PEOPLE.some(function (p) { return p[0] === pid && p[3]; }); }   // set in the people list
+  var PHRASE = {
+    "protected days off": "Protected days off: no overtime (SOP 24b, 34a).",
+    "light duty": "Light duty: no overtime (SOP 24d, 34b).",
+    "on call": "On call: not scheduled for overtime, except call-outs (SOP 24a, 12).",
+    "already working that day": "Already working a shift this day.",
+    "less than 8 hours rest": "Less than 8 hours rest before or after this slot (SOP 24e).",
+    "on time off": "Marked as time off this day.",
+    "second day of rest": "Second day of rest. Only if no one else is available (SOP 24f, 34c).",
+    "not available for overtime": "Not available for overtime."
+  };
+  function evalPerson(pid, i, slot, kind) {
+    var c = cellAt(pid, i), pv = cellAt(pid, i - 1), nx = cellAt(pid, i + 1);
+    var block = [], soft = [], tags = [], first = false, onCall = false;
+    if (isNoOt(pid)) block.push("not available for overtime");
+    if (c.m === "p") block.push("protected days off");
+    else if (c.m === "ld") block.push("light duty");
+    else if (c.m === "o") { onCall = true; if (kind === "sick") { tags.push("On call: call first"); first = true; } else tags.push("On call"); }
+    else if (absent(c)) block.push("on time off");
+    if (kind === "hold") {
+      if (!covers(c, slot)) block.push("not working that shift");
+    } else if (c.ot && c.m !== "x") {
+      block.push("already has " + (otType(c.ot) === "N" ? "night" : "day") + " OT");
+    } else if (works(c)) {
+      block.push("already working that day");
+    } else if ((slot === "D" && covers(pv, "N")) || (slot === "N" && covers(nx, "D"))) {
+      block.push("less than 8 hours rest");
+    }
+    var run = 0;
+    for (var j = 1; j <= 6; j++) { if (works(cellAt(pid, i - j))) run++; else break; }
+    if (run === 6) tags.push("7th day in a row: double time");
+    return { block: block, soft: soft, tags: tags, first: first, onCall: onCall };
+  }
+  function checkCell(pid, w, d, nc) {
+    var i = w * 7 + d, out = [], old = (getRow(pid, w).d || {})[d] || {};
+    var me = PEOPLE.filter(function (p) { return p[0] === pid; })[0], name = me[1];
+    var before = { D: staffCount(i, "D"), N: staffCount(i, "N") };
+    var ot = otType(nc.ot);
+    OVERRIDE = { pid: pid, i: i, cell: nc };
+    try {
+      if (ot && nc.m !== "x") {
+        var base = clone(nc); delete base.ot;
+        OVERRIDE.cell = base;
+        var ev = evalPerson(pid, i, ot, "sched");
+        ev.block.forEach(function (b) { out.push({ lvl: b === "on call" ? "i" : "w", text: PHRASE[b] || b }); });
+        ev.soft.forEach(function (b) { out.push({ lvl: "w", text: PHRASE[b] || b }); });
+        if (ev.onCall) out.push({ lvl: "i", text: PHRASE["on call"] });
+        ev.tags.filter(function (t) { return t.indexOf("On call") !== 0; }).forEach(function (t) { out.push({ lvl: "i", text: t + " (SOP 38)." }); });
+        OVERRIDE.cell = nc;
+      }
+      if (nc.m === "x") {
+        out.push(ot
+          ? { lvl: "i", text: "Turned down: the hours still count as offered, so they count toward offered (SOP 36). Not charged for illness, jury duty, funeral leave, or if the job is not worked (SOP 39)." }
+          : { lvl: "w", text: "Declined OT needs an overtime slot (Day OT or Night OT) so the offered hours can be charged." });
+      }
+      if (nc.m === "b" || nc.m === "v") {
+        var dayN = 0, crewN = 0;
+        PEOPLE.forEach(function (p) { if (p[0] !== pid && absent(cellAt(p[0], i))) { dayN++; if (p[2] === me[2]) crewN++; } });
+        if (crewN >= 2) out.push({ lvl: "w", text: "Two others in shift " + me[2] + " already have time off this day. Max 2 per shift (SOP 2). Use solid yellow (over limit, pending) so it is only granted if someone agrees to cover it." });
+        else if (dayN >= 2) out.push({ lvl: "w", text: "Two others already have time off this day. Max 2 per day (SOP 3). Use solid yellow (over limit, pending) so it is only granted if someone agrees to cover it." });
+      }
+      if (nc.m === "p") {
+        var prot = PEOPLE.filter(function (p) { return p[0] !== pid && cellAt(p[0], i).m === "p"; });
+        if (prot.length) out.push({ lvl: "w", text: prot[0][1] + " is already protected this day. Only 1 processor may be protected at a time, and the first request wins (SOP 18, 19)." });
+      }
+      ["D", "N"].forEach(function (t) {
+        var n = staffCount(i, t);
+        if (n < 3 && n < before[t]) out.push({ lvl: "w", text: "This leaves " + n + " on " + (t === "D" ? "day" : "night") + " shift on " + dayName(i) + ". Minimum is 3 (SOP 1)." });
+      });
+      if (ot) {
+        var hrs = nc.h ? parseFloat(nc.h) : 12;
+        if (isNaN(hrs) || hrs <= 0 || hrs > 24) out.push({ lvl: "w", text: "Hours should be a number from 1 to 24. A normal slot is 12." });
+        else if (hrs !== 12) out.push({ lvl: "i", text: "Counted as " + hrs + " hours. Short call-outs are charged the call-out or the hours worked, whichever is greater (SOP 26)." });
+        else out.push({ lvl: "i", text: "Counts as 12 hours offered. The total in the box is worked out automatically (SOP 25a, 36)." });
+      }
+      if (old.ot && otType(old.ot) !== ot) {
+        out.push({ lvl: "w", text: "This overtime was already posted. The original schedule is not changed. If it was turned down, mark it Declined OT. If more is needed, add another slot (SOP 22)." });
+      }
+      if (i < todayIdx()) out.push({ lvl: "i", text: "This day has already passed." });
+    } finally { OVERRIDE = null; }
+    return out;
+  }
+  function readForm() {
+    var f = $("cellForm"), v = function (n) { var x = f.querySelector('input[name="' + n + '"]:checked'); return x ? x.value : ""; };
+    var nc = {};
+    if (v("s")) nc.s = v("s");
+    if (v("ot")) nc.ot = v("ot");
+    var note = $("fNote").value.trim(), hv = $("fH").value.trim();
+    if (note) nc.note = note;
+    if (hv && parseFloat(hv) !== 12 && nc.ot) nc.h = hv;
+    if (v("m")) nc.m = v("m");
+    return nc;
+  }
+  function bindGuard(pid, w, d) {
+    var f = $("cellForm");
+    function run() {
+      var res = checkCell(pid, w, d, readForm()), anyW = res.some(function (r) { return r.lvl === "w"; });
+      $("warns").innerHTML = res.map(function (r) {
+        return '<li class="' + r.lvl + '"><span>' + esc(r.text) + "</span>" + (r.sug != null ? '<button type="button" class="btn sm" data-sug="' + r.sug + '">Use ' + r.sug + "</button>" : "") + "</li>";
+      }).join("");
+      var sb = $("saveBtn"); if (sb) sb.textContent = anyW ? "Save anyway" : "Save";
+    }
+    f.addEventListener("input", run);
+    f.addEventListener("change", run);
+    run();
+  }
+
+  /* ---------- events ---------- */
+  document.addEventListener("click", function (e) {
+    var tab = e.target.closest(".tab");
+    if (tab) { view = tab.getAttribute("data-view"); renderTabs(); render(); scrollToToday(); return; }
+    var sfb = e.target.closest(".sfb");
+    if (sfb) { openStaff(+sfb.getAttribute("data-i"), sfb.getAttribute("data-t")); return; }
+    var cell = e.target.closest(".cell");
+    if (cell) { openCell(cell.getAttribute("data-pid"), +cell.getAttribute("data-w"), +cell.getAttribute("data-d")); return; }
+    var tal = e.target.closest(".tal");
+    if (tal) openTally(tal.getAttribute("data-pid"), +tal.getAttribute("data-w"));
+  });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && openCtx) closeSheet(); });
+
+  /* ---------- start ---------- */
+  view = String(todayWeek());
+  initNext();
+  renderTabs(); render(); scrollToToday();
+
+  function connect() {
+    var c = window.claude;
+    if (!c || !c.use) { setStatus("local", "Not shared"); synced = true; render(); return; }
+    Promise.all([c.use("db"), c.use("user")]).then(function (r) {
+      db = r[0];
+      if (!db) { setStatus("local", "Not shared"); synced = true; render(); return; }
+      return Promise.resolve(r[1] && r[1].can ? r[1].can("data.write") : null).catch(function () { return null; }).then(function (ok) {
+        if (ok === false) { canWrite = false; setStatus("ro", "View only"); } else setStatus("live", "Live, shared");
+        db.collection("rows").onSnapshot(function (snap) {
+          var next = {};
+          snap.docs.forEach(function (d) { next[d.id] = d.data(); });
+          rows = next; synced = true; scheduleRender();
+        }, function () { setStatus("err", "Connection lost. Reload the page."); });
+      });
+    }).catch(function () { setStatus("local", "Not shared"); synced = true; render(); });
+  }
+  window.__setPeople = function (list) {
+    PEOPLE.length = 0;
+    (list || []).forEach(function (x) { PEOPLE.push([x.id, x.name, x.crew, !!x.noOt]); });
+    periodKey = ""; scheduleRender();
+  };
+  function openPeople() {
+    var cur = PEOPLE.length ? PEOPLE.map(function (p) { var o = { id: p[0], name: p[1], crew: p[2] }; if (p[3]) o.noOt = true; return o; }) : [{ id: "smith", name: "Pat Smith", crew: "A" }];
+    openCtx = { people: true };
+    $("sheetHost").innerHTML = '<div class="scrim" id="scrim"><form class="sheet" id="pplForm" role="dialog" aria-modal="true" aria-labelledby="shT"><h2 id="shT">People list<span>One entry per person, in the order they show on the board. crew is the shift letter. Add "noOt": true to leave someone out of overtime.</span></h2><textarea class="ppl" id="pplText" spellcheck="false" autocapitalize="off">' + esc("[\n" + cur.map(function (x) { return JSON.stringify(x); }).join(",\n") + "\n]") + '</textarea><p class="hint" id="pplErr" style="color:var(--bad)"></p><div class="btns"><button class="btn pri" type="submit">Save</button><button class="btn" type="button" id="cancel">Cancel</button></div></form></div>';
+    $("cancel").addEventListener("click", closeSheet);
+    $("pplForm").addEventListener("submit", function (e) {
+      e.preventDefault();
+      var list, err = $("pplErr");
+      try { list = JSON.parse($("pplText").value); } catch (x) { err.textContent = "That is not valid. Check the commas and quotes."; return; }
+      var ids = {};
+      if (!Array.isArray(list) || !list.length || list.some(function (x) { var ok = x && /^[a-z0-9]{2,20}$/.test(x.id || "") && x.name && /^[A-Za-z]$/.test(x.crew || "") && !ids[x.id]; if (x) ids[x.id] = 1; return !ok; })) { err.textContent = "Each person needs an id (lowercase letters or numbers, no repeats), a name and a crew letter."; return; }
+      list = list.map(function (x) { var o = { id: x.id, name: String(x.name), crew: String(x.crew).toUpperCase() }; if (x.noOt) o.noOt = true; return o; });
+      if (!db) { err.textContent = "Not connected."; return; }
+      db.doc("meta/people").set({ list: list }).then(function () { closeSheet(); toast("People list saved."); }, function () { err.textContent = "That did not save. Check that you are signed in as a lead."; });
+    });
+  }
+  window.__setWrite = function (ok) { canWrite = !!ok; setStatus(ok ? "live" : "ro", ok ? "Live, you can edit" : "Live, view only"); scheduleRender(); };
+  if (window.claude) connect(); else window.addEventListener("claude-ready", connect);
+})();
+</script>
+<style>
+.hd-r { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.btn.sm { padding: 6px 12px; font-size: 13px; }
+.authscrim { position: fixed; inset: 0; z-index: 60; background: rgba(10,16,24,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.authbox { background: var(--surface); color: var(--ink); border-radius: 10px; padding: 18px; width: min(100%, 360px); display: grid; gap: 10px; }
+.authbox h2 { margin: 0; font-size: 20px; }
+.authbox input, .gatebox input, .ppl { font: inherit; padding: 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface2); color: var(--ink); }
+.authbox .err, .gatebox .err { color: var(--bad); font-size: 13px; min-height: 1em; margin: 0; }
+.gate { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.gatebox { background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: min(100%, 380px); display: grid; gap: 12px; }
+.gatebox h1 { margin: 0; font-size: 24px; }
+.gatebox p { margin: 0; color: var(--muted); }
+.gatebox input { font-size: 20px; text-align: center; letter-spacing: .12em; }
+.ppl { width: 100%; min-height: 220px; font: 13px/1.4 var(--f-num); }
+.psel { font: inherit; font-size: 14px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface); color: var(--ink); max-width: 100%; }
+.leadtools { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); display: grid; gap: 12px; }
+.leadtools h2 { margin: 0; font-size: 18px; }
+.lt-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.saveerr { margin: 10px 0; padding: 12px; border: 1px solid var(--bad); border-radius: 8px; background: var(--surface); color: var(--bad); font-weight: 600; display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.saveerr[hidden] { display: none; }
+.sfb { width: 100%; height: 100%; min-height: 32px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
+.sfb:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stl { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.stl li { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface2); }
+.stl small { color: var(--muted); font-weight: 500; }
+.stl .how { color: var(--muted); font-size: 13px; text-align: right; }
+.stl.dim li { opacity: .75; }
+.stn { margin: 6px 0 0; font: 700 14px var(--f-name); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.nx.oc { border-color: var(--mark-o); background: color-mix(in srgb, var(--mark-o) 24%, var(--surface)); box-shadow: inset 0 0 0 1px var(--mark-o); }
+.nx.oc .rk { color: var(--mark-o); font-size: 15px; }
+</style>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getFirestore, collection as fsCol, doc as fsDoc, setDoc, getDoc, deleteDoc, onSnapshot, writeBatch } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+var app = initializeApp({
+  apiKey: "AIzaSyDlF06ZozpvkUkfv_VUfKJFC8zTgFgGEHM",
+  authDomain: "dpo-schedule.firebaseapp.com",
+  projectId: "dpo-schedule",
+  storageBucket: "dpo-schedule.firebasestorage.app",
+  messagingSenderId: "773323198410",
+  appId: "1:773323198410:web:6c60450b4b6b5d39344933"
+});
+var fdb = getFirestore(app), auth = getAuth(app);
+var started = false, gate = null;
+var authBtn = document.getElementById("authBtn");
+
+function leadDialog() {
+  var host = document.createElement("div"); host.className = "authscrim";
+  host.innerHTML = '<form class="authbox"><h2>Lead sign in</h2><input id="aEmail" type="email" placeholder="Email" autocomplete="username" required><input id="aPass" type="password" placeholder="Password" autocomplete="current-password" required><p class="err" id="aErr"></p><div class="btns"><button class="btn pri" type="submit">Sign in</button><button class="btn" type="button" id="aCancel">Cancel</button></div></form>';
+  document.body.appendChild(host);
+  host.querySelector("#aCancel").onclick = function () { host.remove(); };
+  host.querySelector("form").onsubmit = function (e) {
+    e.preventDefault();
+    signInWithEmailAndPassword(auth, host.querySelector("#aEmail").value.trim(), host.querySelector("#aPass").value)
+      .then(function () { host.remove(); }, function () { host.querySelector("#aErr").textContent = "Wrong email or password."; });
+  };
+}
+
+function showGate() {
+  if (gate) return;
+  gate = document.createElement("div"); gate.className = "gate";
+  gate.innerHTML = '<div class="gatebox"><h1>DPO/Formalin OT Schedule</h1><p>Enter the join code to view the schedule.</p><form id="joinForm" class="authbox" style="padding:0;border:0;background:none"><input id="joinCode" type="text" placeholder="Join code" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" required><p class="err" id="joinErr"></p><button class="btn pri" type="submit">View schedule</button></form><button class="btn sm" id="gateLead" type="button">Lead sign in</button></div>';
+  document.body.appendChild(gate);
+  gate.querySelector("#gateLead").onclick = leadDialog;
+  gate.querySelector("#joinForm").onsubmit = function (e) {
+    e.preventDefault();
+    var code = gate.querySelector("#joinCode").value.trim(), err = gate.querySelector("#joinErr");
+    err.textContent = "";
+    var u = auth.currentUser ? Promise.resolve(auth.currentUser) : signInAnonymously(auth).then(function (c) { return c.user; });
+    u.then(function (user) { return setDoc(fsDoc(fdb, "members", user.uid), { code: code }); })
+      .then(function () { start(false); }, function () { err.textContent = "That code did not work. Check it and try again."; });
+  };
+}
+
+function start(isLead) {
+  if (started) return;
+  started = true; window.__isLead = isLead;
+  if (gate) { gate.remove(); gate = null; }
+  authBtn.textContent = isLead ? "Sign out" : "Lead sign in";
+  window.claude = {
+    use: function (name) {
+      if (name === "user") return Promise.resolve({ can: function () { return isLead; } });
+      return Promise.resolve({
+        collection: function (n) {
+          return { onSnapshot: function (cb, err) { return onSnapshot(fsCol(fdb, n), function (snap) { cb({ docs: snap.docs }); }, err); } };
+        },
+        batchSet: function (list) { var b = writeBatch(fdb); list.forEach(function (x) { b.set(fsDoc(fdb, x.path), x.data); }); return b.commit(); },
+        doc: function (path) {
+          var ref = fsDoc(fdb, path);
+          return { set: function (d) { return setDoc(ref, d); }, delete: function () { return deleteDoc(ref); } };
+        }
+      });
+    }
+  };
+  onSnapshot(fsDoc(fdb, "meta", "people"), function (s) { if (window.__setPeople) window.__setPeople(s.exists() ? (s.data().list || []) : []); }, function () {});
+  window.dispatchEvent(new Event("claude-ready"));
+}
+
+onAuthStateChanged(auth, function (u) {
+  if (started) { if (!u || (!u.isAnonymous && !window.__isLead)) location.reload(); return; }
+  if (!u) { showGate(); return; }
+  if (!u.isAnonymous) { start(true); return; }
+  getDoc(fsDoc(fdb, "members", u.uid)).then(function (s) { if (s.exists()) start(false); else showGate(); }, function () { showGate(); });
+});
+
+authBtn.addEventListener("click", function () {
+  if (auth.currentUser && !auth.currentUser.isAnonymous) { signOut(auth); return; }
+  leadDialog();
+});
+</script>
+</body>
+</html>
